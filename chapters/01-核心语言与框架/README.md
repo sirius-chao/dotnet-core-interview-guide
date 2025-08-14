@@ -6,7 +6,7 @@
 
 #### 核心概念
 - **异步编程模型**：基于 Task 的异步编程模式
-- **Task 和 Task<T> 的区别**：Task 表示无返回值的异步操作，Task<T> 表示有返回值的异步操作
+- **Task 和 `Task<T>` 的区别**：Task 表示无返回值的异步操作，`Task<T>` 表示有返回值的异步操作
 - **ConfigureAwait(false) 的作用**：避免死锁，提高性能，不强制回到原始上下文
 - **异步方法的异常处理**：使用 try-catch 包装 await 调用
 - **取消令牌 (CancellationToken)**：支持取消长时间运行的异步操作
