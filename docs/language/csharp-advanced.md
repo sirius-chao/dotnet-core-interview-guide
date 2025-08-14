@@ -35,6 +35,252 @@ await GetDataAsync().ConfigureAwait(false);
 - 正确处理异常和资源清理
 - 避免死锁（UI线程中使用ConfigureAwait(true)）
 
+### 1.4 线程取消机制
+
+#### 1.4.1 CancellationToken（推荐方式）
+```csharp
+public class CancellationTokenExample
+{
+    public async Task ProcessDataAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await ProcessItemAsync();
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 处理取消操作
+            Console.WriteLine("Operation cancelled");
+        }
+    }
+    
+    private async Task ProcessItemAsync()
+    {
+        // 模拟处理逻辑
+        await Task.Delay(50);
+    }
+}
+```
+
+#### 1.4.2 超时取消 - 基于 CancellationTokenSource
+```csharp
+public class TimeoutCancellationExample
+{
+    public async Task ProcessWithTimeoutAsync()
+    {
+        // 设置5秒超时
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        
+        try
+        {
+            await ProcessDataAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Operation timed out after 5 seconds");
+        }
+    }
+    
+    public async Task ProcessWithMultipleTimeoutsAsync()
+    {
+        // 组合多个超时条件
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var userCts = new CancellationTokenSource();
+        
+        // 链接两个取消令牌
+        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            timeoutCts.Token, userCts.Token);
+        
+        try
+        {
+            await ProcessDataAsync(combinedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (timeoutCts.Token.IsCancellationRequested)
+                Console.WriteLine("Operation timed out");
+            else
+                Console.WriteLine("Operation cancelled by user");
+        }
+    }
+}
+```
+
+#### 1.4.3 链接取消令牌 - 组合多个取消条件
+```csharp
+public class LinkedCancellationExample
+{
+    public async Task ProcessWithLinkedTokensAsync(CancellationToken userToken)
+    {
+        // 创建系统级别的取消令牌
+        using var systemCts = new CancellationTokenSource();
+        
+        // 链接用户令牌和系统令牌
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            userToken, systemCts.Token);
+        
+        // 模拟系统在特定条件下取消
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1));
+            systemCts.Cancel();
+        });
+        
+        try
+        {
+            await ProcessDataAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (userToken.IsCancellationRequested)
+                Console.WriteLine("Cancelled by user");
+            else if (systemCts.Token.IsCancellationRequested)
+                Console.WriteLine("Cancelled by system");
+        }
+    }
+}
+```
+
+#### 1.4.4 条件取消 - 基于业务逻辑的取消
+```csharp
+public class ConditionalCancellationExample
+{
+    public async Task ProcessWithConditionsAsync()
+    {
+        var cts = new CancellationTokenSource();
+        
+        // 条件1：内存使用过高时取消
+        var memoryMonitor = Task.Run(async () =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var memoryUsage = GC.GetTotalMemory(false);
+                if (memoryUsage > 100_000_000) // 100MB
+                {
+                    cts.Cancel();
+                    break;
+                }
+                await Task.Delay(1000);
+            }
+        });
+        
+        // 条件2：CPU使用率过高时取消
+        var cpuMonitor = Task.Run(async () =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var cpuUsage = GetCpuUsage(); // 假设的方法
+                if (cpuUsage > 80) // 80%
+                {
+                    cts.Cancel();
+                    break;
+                }
+                await Task.Delay(1000);
+            }
+        });
+        
+        try
+        {
+            await ProcessDataAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Operation cancelled due to resource constraints");
+        }
+    }
+    
+    private double GetCpuUsage()
+    {
+        // 模拟获取CPU使用率
+        return new Random().Next(0, 100);
+    }
+}
+```
+
+#### 1.4.5 优雅关闭（Graceful Shutdown）
+```csharp
+public class GracefulShutdownExample
+{
+    private readonly CancellationTokenSource _shutdownCts = new CancellationTokenSource();
+    private readonly List<Task> _runningTasks = new List<Task>();
+    
+    public async Task StartProcessingAsync()
+    {
+        // 注册应用程序关闭事件
+        Console.CancelKeyPress += (sender, e) =>
+        {
+            e.Cancel = true; // 阻止立即退出
+            _shutdownCts.Cancel();
+        };
+        
+        try
+        {
+            // 启动多个任务
+            for (int i = 0; i < 5; i++)
+            {
+                var task = ProcessDataAsync(_shutdownCts.Token);
+                _runningTasks.Add(task);
+            }
+            
+            // 等待所有任务完成或取消
+            await Task.WhenAll(_runningTasks);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Shutdown requested, waiting for tasks to complete...");
+            
+            // 等待正在运行的任务完成
+            var runningTasks = _runningTasks.Where(t => !t.IsCompleted).ToArray();
+            if (runningTasks.Length > 0)
+            {
+                await Task.WhenAll(runningTasks);
+            }
+        }
+    }
+    
+    private async Task ProcessDataAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await ProcessItemAsync();
+            await Task.Delay(100, cancellationToken);
+        }
+        
+        // 清理资源
+        await CleanupAsync();
+    }
+    
+    private async Task CleanupAsync()
+    {
+        Console.WriteLine("Cleaning up resources...");
+        await Task.Delay(100); // 模拟清理操作
+    }
+}
+```
+
+#### 1.4.6 线程取消最佳实践总结
+**推荐使用的方式：**
+- ✅ **CancellationToken** - 标准、安全、可组合
+- ✅ **超时取消** - 基于 CancellationTokenSource
+- ✅ **链接取消令牌** - 组合多个取消条件
+- ✅ **条件取消** - 基于业务逻辑的取消
+
+**不推荐使用的方式：**
+- ❌ **Thread.Abort()** - 已弃用，可能导致资源泄漏
+- ❌ **Thread.Interrupt()** - 不安全，可能导致异常
+- ❌ **手动标志** - 需要额外的同步机制
+
+**最佳实践：**
+- 优先使用 `CancellationToken`
+- 合理设置超时时间
+- 实现优雅关闭机制
+- 正确处理取消异常
+- 及时清理资源
+
 ## 2. LINQ 高级用法
 
 ### 2.1 自定义扩展方法
