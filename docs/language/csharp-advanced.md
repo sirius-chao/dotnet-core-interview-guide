@@ -94,8 +94,49 @@ await GetDataAsync().ConfigureAwait(false);
 ```
 
 ### 1.3 异步最佳实践
-- 避免 `async void`（除了事件处理器）
-- 使用 `CancellationToken` 支持取消
+
+#### 避免 `async void`（除了事件处理器）
+**为什么避免 `async void`：**
+
+1. **异常处理问题**：`async void` 方法无法被等待（await），因此异常无法被调用者捕获和处理，可能导致应用程序崩溃。
+
+2. **无法等待完成**：调用者无法知道 `async void` 方法何时完成，也无法等待其完成，这会导致程序逻辑错误。
+
+3. **异常传播到同步上下文**：`async void` 方法的异常会传播到 `SynchronizationContext`，在UI应用程序中可能导致界面冻结。
+
+**正确的做法：**
+```csharp
+// ✅ 推荐：返回 Task
+public async Task ProcessDataAsync()
+{
+    await Task.Delay(1000);
+    // 处理逻辑
+}
+
+// ✅ 推荐：返回 Task<T>
+public async Task<string> GetDataAsync()
+{
+    await Task.Delay(1000);
+    return "Data";
+}
+
+// ⚠️ 谨慎使用：仅在事件处理器中使用
+public async void Button_Click(object sender, EventArgs e)
+{
+    try
+    {
+        await ProcessDataAsync();
+    }
+    catch (Exception ex)
+    {
+        // 必须处理异常，防止传播
+        MessageBox.Show($"Error: {ex.Message}");
+    }
+}
+```
+
+#### 使用 `CancellationToken` 支持取消
+- 支持取消
 - 正确处理异常和资源清理
 - 避免死锁（UI线程中使用ConfigureAwait(true)）
 
