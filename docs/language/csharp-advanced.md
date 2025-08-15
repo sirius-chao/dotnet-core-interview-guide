@@ -752,6 +752,26 @@ public static int GetDepth(object obj) => obj switch
 
 ## 7. 值类型优化
 
+**值类型优化的设计哲学**
+.NET Core 引入了 `Span<T>` 和 `Memory<T>` 来解决传统数组操作中的性能问题。这些类型通过减少内存分配、避免数据拷贝和优化内存访问模式来显著提升性能。
+
+**传统方式的性能问题**：
+1. **堆分配开销**：每次创建新数组都会在堆上分配内存
+2. **数据拷贝成本**：Array.Copy 等操作会复制大量数据
+3. **GC 压力**：频繁的堆分配增加垃圾回收压力
+4. **缓存未命中**：堆分配的数据访问模式不利于 CPU 缓存
+
+**Span<T> 的核心优化原理**：
+- **栈分配**：`Span<T>` 是 `ref struct`，只能在栈上分配，不能装箱到堆
+- **零拷贝**：直接引用原始数据，不创建新的数组副本
+- **内存安全**：编译器确保 Span 不会逃逸到堆上，避免悬空引用
+- **边界检查优化**：编译器可以优化边界检查，生成更高效的代码
+
+**Memory<T> 的设计目的**：
+- `Span<T>` 只能在同步方法中使用（ref struct 限制）
+- `Memory<T>` 可以在异步方法中传递，然后转换为 `Span<T>` 使用
+- 提供了 Span 和传统数组之间的桥梁
+
 ### 7.1 Span<T> 和 Memory<T>
 ```csharp
 // Span<T> - 栈分配，高性能
@@ -771,9 +791,89 @@ public static async Task<int> SumAsync(Memory<int> numbers)
     // 异步操作
     return Sum(numbers.Span);
 }
+
+// 实际应用场景示例
+public class SpanMemoryExamples
+{
+    // 高性能字符串处理
+    public static string ProcessString(ReadOnlySpan<char> input)
+    {
+        var result = new StringBuilder();
+        for (int i = 0; i < input.Length; i++)
+        {
+            if (char.IsLetter(input[i]))
+            {
+                result.Append(char.ToUpper(input[i]));
+            }
+        }
+        return result.ToString();
+    }
+    
+    // 异步方法中使用 Memory<T>
+    public static async Task<string> ProcessStringAsync(string input)
+    {
+        await Task.Delay(100); // 模拟异步操作
+        return ProcessString(input.AsSpan()); // 转换为 Span 进行高性能处理
+    }
+    
+    // 高性能数组切片操作
+    public static int[] GetSlice(int[] array, int start, int length)
+    {
+        var span = array.AsSpan(start, length);
+        var result = new int[span.Length];
+        
+        // 使用 Span 进行高性能操作
+        for (int i = 0; i < span.Length; i++)
+        {
+            result[i] = span[i] * 2; // 直接访问，无边界检查开销
+        }
+        
+        return result;
+    }
+    
+    // 传统方式 vs Span 方式性能对比
+    public static void PerformanceComparison()
+    {
+        var data = new int[10000];
+        
+        // 传统方式 - 创建新数组
+        var traditionalResult = new int[data.Length];
+        Array.Copy(data, traditionalResult, data.Length);
+        
+        // Span 方式 - 直接引用
+        var span = data.AsSpan();
+        // 直接操作 span，无拷贝，无堆分配
+    }
+}
 ```
 
 ### 7.2 ValueTask
+
+**ValueTask 的性能优化原理**
+`ValueTask<T>` 是 `Task<T>` 的值类型版本，专门用于优化同步返回场景下的性能。它通过避免不必要的堆分配来减少 GC 压力和内存开销。
+
+**传统 Task 的性能问题**：
+1. **堆分配开销**：`Task.FromResult()` 每次都会在堆上分配 Task 对象
+2. **GC 压力**：频繁的 Task 分配增加垃圾回收负担
+3. **内存碎片**：大量小对象的分配可能导致内存碎片
+4. **缓存污染**：堆分配的对象可能污染 CPU 缓存
+
+**ValueTask 的优化机制**：
+- **栈分配**：同步返回时，ValueTask 在栈上分配，方法结束后自动释放
+- **结构体优化**：值类型避免了堆分配和垃圾回收
+- **智能切换**：内部在同步和异步返回之间智能切换
+- **向后兼容**：可以 await，与 Task 使用方式完全一致
+
+**使用场景分析**：
+- **同步返回**：当方法经常同步返回结果时，使用 ValueTask 性能更好
+- **异步返回**：当方法总是异步执行时，Task 和 ValueTask 性能相当
+- **混合场景**：当方法有时同步返回，有时异步执行时，ValueTask 是最佳选择
+
+**性能提升的关键点**：
+- **减少 GC 压力**：避免不必要的堆分配
+- **提高缓存局部性**：栈分配的数据访问更快
+- **减少内存拷贝**：值类型避免了装箱和拆箱操作
+- **异步优化**：ValueTask 避免同步情况下的 Task 分配
 ```csharp
 public static ValueTask<int> GetValueAsync()
 {
@@ -783,6 +883,55 @@ public static ValueTask<int> GetValueAsync()
     
     // 异步返回
     return new ValueTask<int>(GetValueFromSourceAsync());
+}
+
+// 性能对比示例
+public class PerformanceComparison
+{
+    // 传统方式 - 每次都有堆分配
+    public static Task<int> GetValueTraditional(int value)
+    {
+        return Task.FromResult(value); // 堆分配 Task 对象
+    }
+    
+    // ValueTask 方式 - 同步返回时无堆分配
+    public static ValueTask<int> GetValueOptimized(int value)
+    {
+        return new ValueTask<int>(value); // 栈分配，无堆分配
+    }
+    
+    // 实际应用场景 - 缓存服务
+    public static async ValueTask<string> GetCachedDataAsync(string key)
+    {
+        // 检查缓存
+        if (TryGetFromCache(key, out var cachedValue))
+        {
+            return cachedValue; // 同步返回，使用 ValueTask 优化
+        }
+        
+        // 异步获取数据
+        var data = await FetchDataFromDatabaseAsync(key);
+        CacheData(key, data);
+        return data;
+    }
+    
+    private static bool TryGetFromCache(string key, out string value)
+    {
+        // 模拟缓存查找
+        value = "cached_data";
+        return true;
+    }
+    
+    private static async Task<string> FetchDataFromDatabaseAsync(string key)
+    {
+        await Task.Delay(100); // 模拟数据库查询
+        return "database_data";
+    }
+    
+    private static void CacheData(string key, string data)
+    {
+        // 缓存数据
+    }
 }
 ```
 
@@ -794,10 +943,17 @@ public static ValueTask<int> GetValueAsync()
 3. **反射性能影响**：何时使用，如何优化
 4. **表达式树应用**：动态查询、代码生成
 5. **模式匹配优势**：类型安全、性能提升
+6. **Span<T> 和 Memory<T>**：零拷贝、栈分配、性能优化
+7. **ValueTask 优化**：避免堆分配、减少 GC 压力
 
 ### 8.2 代码示例准备
 - 异步方法的异常处理
 - 自定义LINQ扩展方法
+- 泛型约束的实际应用
+- 反射的动态对象创建
+- 表达式树的动态查询构建
+- Span<T> 的高性能数据处理
+- ValueTask 的性能优化应用
 - 泛型约束的实际应用
 - 反射的动态对象创建
 - 表达式树的动态查询构建
@@ -807,3 +963,6 @@ public static ValueTask<int> GetValueAsync()
 - 合理使用ConfigureAwait
 - 缓存表达式树编译结果
 - 使用Span<T>减少内存分配
+- 合理使用ValueTask避免Task分配
+- 利用Memory<T>在异步方法中传递数据
+- 避免不必要的装箱和拆箱操作
