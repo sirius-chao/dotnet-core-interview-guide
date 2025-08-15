@@ -135,11 +135,6 @@ public async void Button_Click(object sender, EventArgs e)
 }
 ```
 
-#### 使用 `CancellationToken` 支持取消
-- 支持取消
-- 正确处理异常和资源清理
-- 避免死锁（UI线程中使用ConfigureAwait(true)）
-
 ### 1.4 线程取消机制
 
 #### 1.4.1 CancellationToken（推荐方式）
