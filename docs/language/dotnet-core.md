@@ -17,6 +17,17 @@
 - **Scoped**：适用于有状态服务，如数据库上下文、业务服务
 - **Transient**：适用于轻量级服务，如工具类、辅助服务
 
+**生命周期详解**：
+
+**Scoped（作用域）**：
+- **一个请求作用域内**：同一个对象实例
+- **跨方法共享**：在同一个 HTTP 请求中，无论经过多少个方法调用，注入的都是同一个对象实例
+- **生命周期**：从请求开始到请求结束
+
+**Transient（瞬时）**：
+- **每次注入都创建新实例**：每次从容器中获取服务时，都会创建一个全新的对象实例
+- **方法间独立**：即使在同一个请求中，不同方法注入的也是不同的对象实例
+
 ### 1.1 服务生命周期
 ```csharp
 // 在 Program.cs 或 Startup.cs 中
@@ -26,6 +37,55 @@ services.AddTransient<IHelper, Helper>();              // 瞬时，每次请求�
 
 // 工厂模式注册
 services.AddSingleton<IMyService>(sp => new MyService(sp.GetRequiredService<ILogger>()));
+
+**生命周期区别示例**：
+```csharp
+// 注册服务
+services.AddScoped<IMyService, MyService>();      // 作用域
+services.AddTransient<IHelper, Helper>();         // 瞬时
+
+// 控制器
+public class MyController : ControllerBase
+{
+    private readonly IMyService _scopedService;    // 作用域服务
+    private readonly IHelper _transientHelper;     // 瞬时服务
+    
+    public MyController(IMyService scopedService, IHelper transientHelper)
+    {
+        _scopedService = scopedService;
+        _transientHelper = transientHelper;
+    }
+    
+    [HttpGet]
+    public IActionResult Get()
+    {
+        // 调用业务服务
+        var result = _businessService.Process(_scopedService, _transientHelper);
+        return Ok(result);
+    }
+}
+
+// 业务服务
+public class BusinessService
+{
+    private readonly IMyService _scopedService;    // 作用域服务
+    private readonly IHelper _transientHelper;     // 瞬时服务
+    
+    public BusinessService(IMyService scopedService, IHelper transientHelper)
+    {
+        _scopedService = scopedService;
+        _transientHelper = transientHelper;
+    }
+    
+    public string Process(IMyService scopedParam, IHelper transientParam)
+    {
+        // 在同一个请求中：
+        // _scopedService 和 scopedParam 是同一个对象实例
+        // _transientHelper 和 transientParam 是不同的对象实例
+        
+        return "Processed";
+    }
+}
 ```
 
 ### 1.2 服务注册最佳实践
