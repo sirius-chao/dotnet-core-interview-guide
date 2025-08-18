@@ -2,9 +2,7 @@
 
 ## 📚 目录导航
 
-- [ASP.NET Core 核心框架](./aspnet-core.md)
 - [Web API 设计与实现](./web-api-design.md)
-- [前端集成与现代化](./frontend-integration.md)
 - [实时通信与 SignalR](./signalr-realtime.md)
 - [Blazor 全栈开发](./blazor-development.md)
 
@@ -12,7 +10,6 @@
 
 本模块旨在帮助开发者掌握 .NET Core Web 开发的核心技术，包括：
 
-- **MVC 架构**: 深入理解 Model-View-Controller 模式
 - **Web API 设计**: 掌握 RESTful API 的设计原则和最佳实践
 - **前端集成**: 了解现代前端技术与 .NET Core 的集成
 - **实时通信**: 掌握 SignalR 的实时通信机制
@@ -147,8 +144,6 @@ A: 适合需要快速开发原型、团队主要使用 C# 技能、需要前后�
 
 选择你感兴趣的主题开始学习：
 
-1. **[ASP.NET Core 核心框架](./aspnet-core.md)** - 深入学习 MVC 架构和核心概念
-2. **[Web API 设计](./web-api-design.md)** - 掌握 RESTful API 设计原则
-3. **[前端集成](./frontend-integration.md)** - 了解现代前端技术集成
-4. **[实时通信](./signalr-realtime.md)** - 学习 SignalR 实时通信
-5. **[Blazor 开发](./blazor-development.md)** - 探索全栈开发新方式
+1. **[Web API 设计](./web-api-design.md)** - 掌握 RESTful API 设计原则
+2. **[实时通信](./signalr-realtime.md)** - 学习 SignalR 实时通信
+3. **[Blazor 开发](./blazor-development.md)** - 探索全栈开发新方式
