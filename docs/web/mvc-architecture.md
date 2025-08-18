@@ -1,12 +1,12 @@
-# MVC 架构深度解析
+# MVC 架构
 
 ## 📚 目录导航
 
 - [MVC 架构设计哲学](#mvc-design-philosophy)
-- [控制器深度解析](#controller-deep-analysis)
-- [模型绑定机制深度解析](#model-binding-mechanism)
-- [模型验证深度解析](#model-validation)
-- [过滤器系统深度解析](#filter-system)
+- [控制器](#controller-deep-analysis)
+- [模型绑定机制](#model-binding-mechanism)
+- [模型验证](#model-validation)
+- [过滤器系统](#filter-system)
 - [面试常见问题](#interview-questions)
 
 ## 🎯 学习目标
@@ -43,7 +43,7 @@ MVC（Model-View-Controller）是一种软件架构模式，其核心思想是**
 - 不直接操作数据
 - 决定使用哪个视图
 
-## 🎮 控制器深度解析 {#controller-deep-analysis}
+## 🎮 控制器 {#controller-deep-analysis}
 
 ### 控制器的生命周期
 
@@ -98,7 +98,7 @@ public async Task<ActionResult<IEnumerable<Product>>> GetProductsAsync(
 }
 ```
 
-## 🔗 模型绑定机制深度解析 {#model-binding-mechanism}
+## 🔗 模型绑定机制 {#model-binding-mechanism}
 
 ### 模型绑定的工作流程
 
@@ -121,7 +121,7 @@ public IActionResult TestBinding(
 }
 ```
 
-## ✅ 模型验证深度解析 {#model-validation}
+## ✅ 模型验证 {#model-validation}
 
 ### 数据注解验证
 
@@ -165,7 +165,7 @@ public class ValidProductCodeAttribute : ValidationAttribute
 }
 ```
 
-## 🔍 过滤器系统深度解析 {#filter-system}
+## 🔍 过滤器系统 {#filter-system}
 
 ### 过滤器的执行顺序
 
