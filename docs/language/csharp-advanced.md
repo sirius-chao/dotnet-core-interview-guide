@@ -511,6 +511,103 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
   - **任务优先级**：通过 TaskCreationOptions 设置任务优先级
   - **调度策略**：可以选择同步调度、异步调度或混合调度
   - **性能考虑**：合理设置任务粒度，避免任务过小或过大
+  - **具体实现**：
+    ```csharp
+    // Task 调度策略示例
+    public class TaskSchedulingExample
+    {
+        public async Task DemonstrateTaskScheduling()
+        {
+            // 1. 默认调度（线程池）
+            var defaultTask = Task.Run(() => Console.WriteLine("Default scheduling"));
+            
+            // 2. 长运行任务（避免线程池饥饿）
+            var longRunningTask = Task.Factory.StartNew(() => 
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Long running task completed");
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            
+            // 3. 自定义调度器
+            var customScheduler = new LimitedConcurrencyLevelTaskScheduler(2);
+            var customTask = Task.Factory.StartNew(() => 
+            {
+                Console.WriteLine("Custom scheduler task");
+            }, CancellationToken.None, TaskCreationOptions.None, customScheduler);
+            
+            // 4. 任务延续和调度
+            var continuationTask = Task.Run(() => "Hello")
+                .ContinueWith(t => Console.WriteLine(t.Result + " World"), 
+                    TaskScheduler.FromCurrentSynchronizationContext());
+            
+            await Task.WhenAll(defaultTask, longRunningTask, customTask, continuationTask);
+        }
+    }
+    
+    // 自定义任务调度器
+    public class LimitedConcurrencyLevelTaskScheduler : TaskScheduler
+    {
+        private readonly int _maxDegreeOfParallelism;
+        private readonly LinkedList<Task> _tasks = new LinkedList<Task>();
+        private int _delegatesQueuedOrRunning = 0;
+        
+        public LimitedConcurrencyLevelTaskScheduler(int maxDegreeOfParallelism)
+        {
+            if (maxDegreeOfParallelism < 1) throw new ArgumentOutOfRangeException(nameof(maxDegreeOfParallelism));
+            _maxDegreeOfParallelism = maxDegreeOfParallelism;
+        }
+        
+        protected override void QueueTask(Task task)
+        {
+            lock (_tasks)
+            {
+                _tasks.AddLast(task);
+                if (_delegatesQueuedOrRunning < _maxDegreeOfParallelism)
+                {
+                    ++_delegatesQueuedOrRunning;
+                    NotifyThreadPoolOfPendingWork();
+                }
+            }
+        }
+        
+        private void NotifyThreadPoolOfPendingWork()
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(_ =>
+            {
+                while (true)
+                {
+                    Task item;
+                    lock (_tasks)
+                    {
+                        if (_tasks.Count == 0)
+                        {
+                            --_delegatesQueuedOrRunning;
+                            break;
+                        }
+                        item = _tasks.First.Value;
+                        _tasks.RemoveFirst();
+                    }
+                    base.TryExecuteTask(item);
+                }
+            }, null);
+        }
+        
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+        {
+            return false;
+        }
+        
+        public override int MaximumConcurrencyLevel => _maxDegreeOfParallelism;
+        
+        protected override IEnumerable<Task> GetScheduledTasks()
+        {
+            lock (_tasks)
+            {
+                return _tasks.ToArray();
+            }
+        }
+    }
+    ```
 
 - **同步上下文**：深入理解同步上下文的作用
   - **UI 线程同步**：在 WPF/WinForms 中确保异步操作完成后回到 UI 线程
@@ -540,6 +637,125 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
   - **查询提供者**：不同数据源有不同的查询提供者
   - **执行计划**：查询提供者生成执行计划
   - **缓存机制**：缓存常用的查询计划
+  - **具体实现**：
+    ```csharp
+    // LINQ 查询执行机制示例
+    public class LinqExecutionExample
+    {
+        public void DemonstrateExecutionMechanism()
+        {
+            var numbers = Enumerable.Range(1, 1000000);
+            
+            // 1. 延迟执行 - 查询定义时不会执行
+            var query = numbers.Where(n => n % 2 == 0)
+                              .Select(n => n * n)
+                              .Take(10);
+            
+            Console.WriteLine("Query defined, not executed yet");
+            
+            // 2. 强制立即执行
+            var result1 = query.ToList(); // 立即执行并缓存结果
+            var result2 = query.ToArray(); // 再次执行，没有缓存
+            
+            // 3. 表达式树示例（IQueryable）
+            IQueryable<int> queryable = numbers.AsQueryable();
+            var expressionTree = queryable.Where(n => n > 100)
+                                        .Select(n => n.ToString());
+            
+            // 4. 查询提供者示例
+            var customProvider = new CustomQueryProvider();
+            var customQuery = new CustomQuery<int>(customProvider, expressionTree.Expression);
+        }
+        
+        // 自定义查询提供者
+        public class CustomQueryProvider : IQueryProvider
+        {
+            public IQueryable CreateQuery(Expression expression)
+            {
+                return new CustomQuery<int>(this, expression);
+            }
+            
+            public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
+            {
+                return new CustomQuery<TElement>(this, expression);
+            }
+            
+            public object Execute(Expression expression)
+            {
+                // 实现查询执行逻辑
+                return null;
+            }
+            
+            public TResult Execute<TResult>(Expression expression)
+            {
+                // 实现类型化查询执行逻辑
+                return default(TResult);
+            }
+        }
+        
+        public class CustomQuery<T> : IQueryable<T>
+        {
+            private readonly IQueryProvider _provider;
+            private readonly Expression _expression;
+            
+            public CustomQuery(IQueryProvider provider, Expression expression)
+            {
+                _provider = provider;
+                _expression = expression;
+            }
+            
+            public Type ElementType => typeof(T);
+            public Expression Expression => _expression;
+            public IQueryProvider Provider => _provider;
+            
+            public IEnumerator<T> GetEnumerator()
+            {
+                return _provider.Execute<IEnumerable<T>>(_expression).GetEnumerator();
+            }
+            
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+    }
+    
+    // LINQ 性能优化示例
+    public class LinqPerformanceOptimization
+    {
+        public void OptimizeLinqQueries()
+        {
+            var data = Enumerable.Range(1, 1000000).ToList();
+            
+            // 1. 避免 N+1 查询问题
+            var optimizedQuery = data.Where(x => x > 100)
+                                   .Select(x => new { Value = x, Square = x * x })
+                                   .ToList(); // 一次性执行
+            
+            // 2. 使用索引优化
+            var indexedData = data.Select((item, index) => new { Item = item, Index = index })
+                                 .Where(x => x.Index % 2 == 0)
+                                 .Select(x => x.Item);
+            
+            // 3. 批量处理
+            var batchSize = 1000;
+            var batches = data.Select((item, index) => new { Item = item, Index = index })
+                             .GroupBy(x => x.Index / batchSize)
+                             .Select(g => g.Select(x => x.Item).ToList());
+            
+            // 4. 缓存查询结果
+            var expensiveQuery = data.Where(x => IsPrime(x)).ToList();
+            var cachedResult = expensiveQuery; // 避免重复计算
+        }
+        
+        private bool IsPrime(int number)
+        {
+            if (number < 2) return false;
+            for (int i = 2; i <= Math.Sqrt(number); i++)
+            {
+                if (number % i == 0) return false;
+            }
+            return true;
+        }
+    }
+    ```
 
 - **性能瓶颈识别**：识别 LINQ 查询的性能瓶颈
   - **N+1 查询问题**：避免在循环中执行数据库查询

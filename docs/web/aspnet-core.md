@@ -328,6 +328,37 @@ ASP.NET Core 提供了强大的数据保护机制：
 - **Singleton 陷阱**：在 Scoped 服务中注入 Singleton 服务的问题
   - **问题描述**：当 Scoped 服务中注入 Singleton 服务时，Singleton 服务会持有 Scoped 服务的引用，导致内存泄漏
   - **根本原因**：Singleton 服务在整个应用生命周期中存在，而 Scoped 服务在请求结束时应该被释放
+  - **具体场景**：
+    ```csharp
+    // 错误示例：Singleton 持有 Scoped 引用
+    public class SingletonService
+    {
+        private readonly ScopedService _scopedService; // 问题：Singleton 持有 Scoped 引用
+        
+        public SingletonService(ScopedService scopedService)
+        {
+            _scopedService = scopedService; // 这会导致内存泄漏
+        }
+    }
+    
+    // 正确示例：使用工厂模式
+    public class SingletonService
+    {
+        private readonly IServiceProvider _serviceProvider;
+        
+        public SingletonService(IServiceProvider serviceProvider)
+        {
+            _serviceProvider = serviceProvider;
+        }
+        
+        public void Process()
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var scopedService = scope.ServiceProvider.GetRequiredService<ScopedService>();
+            // 使用 scopedService，作用域结束后自动释放
+        }
+    }
+    ```
   - **解决方案**：
     1. **使用工厂模式**：通过工厂方法创建 Scoped 服务，避免直接注入
     2. **使用 IServiceProvider**：在需要时通过 IServiceProvider 获取 Scoped 服务
@@ -360,6 +391,71 @@ ASP.NET Core 提供了强大的数据保护机制：
   - **短路优化**：将可能短路的中间件（如认证、授权）放在前面
   - **缓存策略**：将缓存中间件放在计算密集型中间件之前
   - **监控顺序**：将监控和日志中间件放在最外层，捕获所有请求
+  - **具体实现**：
+    ```csharp
+    // 性能优化的中间件顺序示例
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        // 1. 异常处理（最外层，捕获所有异常）
+        if (env.IsDevelopment())
+            app.UseDeveloperExceptionPage();
+        else
+            app.UseExceptionHandler("/Error");
+        
+        // 2. HTTPS 重定向（早期处理，避免后续处理）
+        app.UseHttpsRedirection();
+        
+        // 3. 静态文件（可能短路，减少后续中间件执行）
+        app.UseStaticFiles();
+        
+        // 4. 路由（确定请求路径，避免不必要的中间件执行）
+        app.UseRouting();
+        
+        // 5. 认证（早期验证，避免未授权访问后续资源）
+        app.UseAuthentication();
+        
+        // 6. 授权（基于认证结果进行授权）
+        app.UseAuthorization();
+        
+        // 7. 业务中间件（核心业务逻辑）
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllers();
+        });
+    }
+    
+    // 自定义性能监控中间件
+    public class PerformanceMiddleware
+    {
+        private readonly RequestDelegate _next;
+        private readonly ILogger<PerformanceMiddleware> _logger;
+        
+        public PerformanceMiddleware(RequestDelegate next, ILogger<PerformanceMiddleware> logger)
+        {
+            _next = next;
+            _logger = logger;
+        }
+        
+        public async Task InvokeAsync(HttpContext context)
+        {
+            var sw = Stopwatch.StartNew();
+            
+            try
+            {
+                await _next(context);
+            }
+            finally
+            {
+                sw.Stop();
+                if (sw.ElapsedMilliseconds > 100) // 记录慢请求
+                {
+                    _logger.LogWarning("Slow request: {Path} took {Elapsed}ms", 
+                        context.Request.Path, sw.ElapsedMilliseconds);
+                }
+            }
+        }
+    }
+    ```
 
 - **条件中间件**：根据条件启用或禁用中间件
   - **环境条件**：根据环境变量启用不同的中间件
@@ -386,6 +482,66 @@ ASP.NET Core 提供了强大的数据保护机制：
   - **FluentValidation**：使用 FluentValidation 进行复杂验证
   - **启动时验证**：在应用启动时验证所有配置，及早发现问题
   - **验证结果处理**：验证失败时提供清晰的错误信息
+  - **具体实现**：
+    ```csharp
+    // 强类型配置类
+    public class DatabaseSettings
+    {
+        [Required]
+        public string ConnectionString { get; set; }
+        
+        [Range(1, 100)]
+        public int MaxPoolSize { get; set; } = 10;
+        
+        [Range(1, 300)]
+        public int CommandTimeout { get; set; } = 30;
+    }
+    
+    // 启动时配置验证
+    public class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            // 绑定配置并验证
+            services.Configure<DatabaseSettings>(Configuration.GetSection("Database"));
+            
+            // 启动时验证配置
+            services.AddOptions<DatabaseSettings>()
+                .Bind(Configuration.GetSection("Database"))
+                .ValidateDataAnnotations()
+                .ValidateOnStart(); // 启动时验证
+        }
+    }
+    
+    // 使用 FluentValidation 进行复杂验证
+    public class DatabaseSettingsValidator : AbstractValidator<DatabaseSettings>
+    {
+        public DatabaseSettingsValidator()
+        {
+            RuleFor(x => x.ConnectionString)
+                .NotEmpty()
+                .Must(BeValidConnectionString)
+                .WithMessage("Invalid connection string format");
+            
+            RuleFor(x => x.MaxPoolSize)
+                .InclusiveBetween(1, 100)
+                .WithMessage("MaxPoolSize must be between 1 and 100");
+        }
+        
+        private bool BeValidConnectionString(string connectionString)
+        {
+            try
+            {
+                var builder = new SqlConnectionStringBuilder(connectionString);
+                return !string.IsNullOrEmpty(builder.DataSource);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+    ```
 
 - **配置热重载**：实现配置热重载的注意事项
   - **文件监控**：监控配置文件变化，自动重新加载
@@ -393,6 +549,111 @@ ASP.NET Core 提供了强大的数据保护机制：
   - **缓存失效**：配置更新后及时失效相关缓存
   - **线程安全**：确保配置更新过程中的线程安全
   - **回滚机制**：配置更新失败时能够回滚到之前的状态
+  - **具体实现**：
+    ```csharp
+    // 配置热重载实现
+    public class Startup
+    {
+        public void ConfigureServices(IServiceCollection services)
+        {
+            // 启用配置热重载
+            services.Configure<DatabaseSettings>(Configuration.GetSection("Database"));
+            
+            // 注册配置变更监听服务
+            services.AddSingleton<IConfigurationChangeHandler, ConfigurationChangeHandler>();
+        }
+    }
+    
+    // 配置变更处理器
+    public class ConfigurationChangeHandler : IConfigurationChangeHandler
+    {
+        private readonly IMemoryCache _cache;
+        private readonly ILogger<ConfigurationChangeHandler> _logger;
+        
+        public ConfigurationChangeHandler(IMemoryCache cache, ILogger<ConfigurationChangeHandler> logger)
+        {
+            _cache = cache;
+            _logger = logger;
+        }
+        
+        public void OnConfigurationChanged(string key)
+        {
+            // 清除相关缓存
+            _cache.Remove(key);
+            _logger.LogInformation("Configuration changed for key: {Key}", key);
+        }
+    }
+    
+    // 使用 IOptionsMonitor 监听配置变化
+    public class DatabaseService
+    {
+        private readonly DatabaseSettings _settings;
+        private readonly ILogger<DatabaseService> _logger;
+        
+        public DatabaseService(IOptionsMonitor<DatabaseSettings> settings, ILogger<DatabaseService> logger)
+        {
+            _settings = settings.CurrentValue;
+            _logger = logger;
+            
+            // 监听配置变化
+            settings.OnChange(newSettings =>
+            {
+                _logger.LogInformation("Database settings updated");
+                // 处理配置更新逻辑
+                HandleConfigurationChange(newSettings);
+            });
+        }
+        
+        private void HandleConfigurationChange(DatabaseSettings newSettings)
+        {
+            // 更新连接池大小
+            // 更新超时设置
+            // 其他配置相关的更新逻辑
+        }
+    }
+    
+    // 配置回滚机制
+    public class ConfigurationRollbackService
+    {
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<ConfigurationRollbackService> _logger;
+        private readonly Stack<ConfigurationSnapshot> _snapshots = new();
+        
+        public void CreateSnapshot()
+        {
+            var snapshot = new ConfigurationSnapshot
+            {
+                Timestamp = DateTime.UtcNow,
+                Settings = new Dictionary<string, string>()
+            };
+            
+            // 保存当前配置状态
+            foreach (var kvp in _configuration.AsEnumerable())
+            {
+                snapshot.Settings[kvp.Key] = kvp.Value;
+            }
+            
+            _snapshots.Push(snapshot);
+        }
+        
+        public bool Rollback()
+        {
+            if (_snapshots.Count == 0)
+                return false;
+                
+            var snapshot = _snapshots.Pop();
+            // 实现回滚逻辑
+            _logger.LogInformation("Rolling back configuration to {Timestamp}", snapshot.Timestamp);
+            return true;
+        }
+    }
+    
+    public class ConfigurationSnapshot
+    {
+        public DateTime Timestamp { get; set; }
+        public Dictionary<string, string> Settings { get; set; }
+    }
+    ```
 
 - **敏感配置保护**：如何保护敏感配置信息
   - **用户密钥**：使用用户密钥存储敏感配置
