@@ -1,4 +1,249 @@
-# 安全与最佳实践
+# 安全最佳实践面试指南 🚀
+
+## 📚 快速导航
+- [面试高频问题](#面试高频问题)
+- [OWASP安全指南](#1-owasp-安全指南)
+- [身份认证与授权](#2-身份认证与授权)
+- [数据保护](#3-数据保护)
+- [安全架构](#4-安全架构)
+- [面试重点](#5-面试重点)
+
+## ❓ 面试高频问题
+
+### Q1: 如何防止SQL注入攻击？
+
+**面试官想了解什么**：你对Web安全的理解深度。
+
+**🎯 标准答案**：
+
+**SQL注入防护策略**：
+1. **参数化查询**：使用参数化查询，避免字符串拼接
+2. **输入验证**：验证和清理用户输入
+3. **最小权限原则**：数据库用户使用最小权限
+4. **错误信息处理**：不暴露数据库错误信息
+
+**具体实现**：
+```csharp
+// 错误示例：容易受到SQL注入攻击
+public async Task<User> GetUserByEmailAsync_Unsafe(string email)
+{
+    var sql = $"SELECT * FROM Users WHERE Email = '{email}'";
+    return await _connection.QueryFirstOrDefaultAsync<User>(sql);
+}
+
+// 正确示例：使用参数化查询
+public async Task<User> GetUserByEmailAsync_Safe(string email)
+{
+    var sql = "SELECT * FROM Users WHERE Email = @Email";
+    var parameters = new { Email = email };
+    return await _connection.QueryFirstOrDefaultAsync<User>(sql, parameters);
+}
+```
+
+**💡 面试加分点**：提到"我会使用ORM框架如Entity Framework，它们内置了SQL注入防护"
+
+---
+
+### Q2: 如何实现安全的身份认证系统？
+
+**面试官想了解什么**：你对身份认证的理解。
+
+**🎯 标准答案**：
+
+**身份认证安全策略**：
+1. **密码安全**：强密码策略、密码哈希、盐值
+2. **多因素认证**：SMS、邮件、TOTP、硬件密钥
+3. **会话管理**：安全的会话ID、超时机制、并发控制
+4. **防暴力破解**：账户锁定、验证码、速率限制
+
+**具体实现**：
+```csharp
+// 密码哈希示例
+public class PasswordHasher
+{
+    public string HashPassword(string password)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(password, BCrypt.Net.BCrypt.GenerateSalt(12));
+    }
+    
+    public bool VerifyPassword(string password, string hashedPassword)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
+    }
+}
+
+// JWT认证示例
+public class JwtService
+{
+    public string GenerateToken(User user)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Email, user.Email),
+            new Claim(ClaimTypes.Role, user.Role)
+        };
+        
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.Now.AddHours(1),
+            signingCredentials: creds);
+        
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用Identity Server或Auth0等成熟的身份认证解决方案"
+
+---
+
+### Q3: 如何保护敏感数据？
+
+**面试官想了解什么**：你对数据安全的理解。
+
+**🎯 标准答案**：
+
+**数据保护策略**：
+1. **数据加密**：传输加密（HTTPS）、存储加密（AES）
+2. **密钥管理**：密钥轮换、密钥存储安全、HSM
+3. **数据分类**：敏感数据识别、分级保护
+4. **访问控制**：基于角色的访问控制（RBAC）、最小权限
+
+**具体实现**：
+```csharp
+// 数据加密服务
+public class EncryptionService
+{
+    private readonly byte[] _key;
+    private readonly byte[] _iv;
+    
+    public EncryptionService(IConfiguration configuration)
+    {
+        _key = Convert.FromBase64String(configuration["Encryption:Key"]);
+        _iv = Convert.FromBase64String(configuration["Encryption:IV"]);
+    }
+    
+    public string Encrypt(string plainText)
+    {
+        using (var aes = Aes.Create())
+        {
+            aes.Key = _key;
+            aes.IV = _iv;
+            
+            using (var encryptor = aes.CreateEncryptor())
+            using (var msEncrypt = new MemoryStream())
+            {
+                using (var csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                using (var swEncrypt = new StreamWriter(csEncrypt))
+                {
+                    swEncrypt.Write(plainText);
+                }
+                
+                return Convert.ToBase64String(msEncrypt.ToArray());
+            }
+        }
+    }
+    
+    public string Decrypt(string cipherText)
+    {
+        var cipherBytes = Convert.FromBase64String(cipherText);
+        
+        using (var aes = Aes.Create())
+        {
+            aes.Key = _key;
+            aes.IV = _iv;
+            
+            using (var decryptor = aes.CreateDecryptor())
+            using (var msDecrypt = new MemoryStream(cipherBytes))
+            using (var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
+            using (var srDecrypt = new StreamReader(csDecrypt))
+            {
+                return srDecrypt.ReadToEnd();
+            }
+        }
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用Azure Key Vault或AWS KMS等云服务进行密钥管理"
+
+---
+
+## 🏗️ 实战场景分析
+
+### 场景1：电商系统安全架构
+
+**业务需求**：构建支持100万+用户的电商系统安全架构
+
+**🎯 技术方案**：
+
+```
+用户访问 → 身份认证 → 权限验证 → 数据访问 → 安全审计 → 监控告警
+   ↓         ↓          ↓          ↓          ↓          ↓
+  安全网关   多因素认证   角色权限    数据加密    操作日志    实时监控
+```
+
+**核心实现**：
+1. **身份认证**：OAuth 2.0 + OpenID Connect、多因素认证
+2. **权限控制**：基于角色的访问控制、API权限管理
+3. **数据保护**：敏感数据加密、PCI DSS合规
+4. **安全监控**：SIEM系统、异常检测、实时告警
+
+**🔑 关键决策**：使用API网关进行统一安全控制，使用微服务架构隔离安全边界
+
+---
+
+### 场景2：企业级应用安全
+
+**业务需求**：构建支持1000+员工的企业级应用安全体系
+
+**🎯 技术方案**：
+
+```
+员工登录 → SSO认证 → 权限验证 → 数据访问 → 操作审计 → 合规报告
+   ↓         ↓          ↓          ↓          ↓          ↓
+  统一认证   单点登录    细粒度权限   数据脱敏    完整日志    合规检查
+```
+
+**核心实现**：
+1. **统一认证**：Active Directory集成、SAML 2.0
+2. **权限管理**：细粒度权限控制、动态权限分配
+3. **数据安全**：数据分类、脱敏、加密
+4. **合规监控**：SOX、GDPR、数据保护法规
+
+---
+
+## 📊 安全技术对比图表
+
+### 身份认证方式对比
+
+```
+身份认证方式对比：
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   用户名密码    │    │   多因素认证    │    │   生物识别      │
+│                │    │                │    │                │
+│ 简单易用       │    │ 安全性高        │    │ 用户体验好      │
+│ 安全性低       │    │ 复杂度增加      │    │ 成本高          │
+│ 易被破解       │    │ 防暴力破解      │    │ 技术成熟        │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### 加密算法对比
+
+| 算法 | 类型 | 安全性 | 性能 | 适用场景 | 推荐指数 |
+|------|------|--------|------|----------|----------|
+| **AES-256** | 对称加密 | 高 | 快 | 数据加密 | ⭐⭐⭐⭐⭐ |
+| **RSA-2048** | 非对称加密 | 高 | 慢 | 密钥交换 | ⭐⭐⭐⭐⭐ |
+| **SHA-256** | 哈希算法 | 高 | 快 | 数据完整性 | ⭐⭐⭐⭐⭐ |
+| **ChaCha20** | 流加密 | 高 | 快 | 实时加密 | ⭐⭐⭐⭐ |
+
+---
 
 ## 1. OWASP 安全指南
 

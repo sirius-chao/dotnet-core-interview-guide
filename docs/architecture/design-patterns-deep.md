@@ -1,4 +1,269 @@
-# 设计模式深度原理与架构思维
+# 设计模式深度面试指南 🚀
+
+## 📚 快速导航
+- [面试高频问题](#面试高频问题)
+- [设计模式哲学](#1-设计模式哲学深度解析)
+- [创建型模式](#2-创建型模式深度应用)
+- [结构型模式](#3-结构型模式深度应用)
+- [行为型模式](#4-行为型模式深度应用)
+- [面试重点](#5-面试重点深度解析)
+
+## ❓ 面试高频问题
+
+### Q1: 单例模式的线程安全问题如何解决？
+
+**面试官想了解什么**：你对设计模式实现细节的理解深度。
+
+**🎯 标准答案**：
+
+**线程安全问题**：
+1. **双重检查锁定**：使用双重检查锁定确保线程安全
+2. **静态构造函数**：利用C#静态构造函数的线程安全特性
+3. **Lazy<T>**：使用Lazy<T>的线程安全延迟初始化
+
+**具体实现**：
+```csharp
+// 双重检查锁定
+public class Singleton
+{
+    private static volatile Singleton _instance;
+    private static readonly object _lock = new object();
+    
+    private Singleton() { }
+    
+    public static Singleton Instance
+    {
+        get
+        {
+            if (_instance == null)
+            {
+                lock (_lock)
+                {
+                    if (_instance == null)
+                    {
+                        _instance = new Singleton();
+                    }
+                }
+            }
+            return _instance;
+        }
+    }
+}
+
+// 使用Lazy<T>
+public class Singleton
+{
+    private static readonly Lazy<Singleton> _instance = 
+        new Lazy<Singleton>(() => new Singleton());
+    
+    private Singleton() { }
+    
+    public static Singleton Instance => _instance.Value;
+}
+```
+
+**💡 面试加分点**：提到"我会根据性能要求选择合适方案，高并发用Lazy<T>，一般场景用双重检查锁定"
+
+---
+
+### Q2: 工厂模式和抽象工厂模式的区别是什么？
+
+**面试官想了解什么**：你对设计模式的理解和选择能力。
+
+**🎯 标准答案**：
+
+**模式区别**：
+| 特性 | 工厂模式 | 抽象工厂模式 |
+|------|----------|--------------|
+| **创建对象** | 单个对象 | 相关对象族 |
+| **扩展性** | 容易扩展新产品 | 难以扩展新产品族 |
+| **复杂度** | 简单 | 复杂 |
+| **适用场景** | 单一产品创建 | 产品族创建 |
+
+**具体实现**：
+```csharp
+// 工厂模式
+public interface IAnimal
+{
+    void MakeSound();
+}
+
+public class Dog : IAnimal
+{
+    public void MakeSound() => Console.WriteLine("Woof!");
+}
+
+public class Cat : IAnimal
+{
+    public void MakeSound() => Console.WriteLine("Meow!");
+}
+
+public class AnimalFactory
+{
+    public static IAnimal CreateAnimal(string type)
+    {
+        return type.ToLower() switch
+        {
+            "dog" => new Dog(),
+            "cat" => new Cat(),
+            _ => throw new ArgumentException("Unknown animal type")
+        };
+    }
+}
+
+// 抽象工厂模式
+public interface IAnimalFactory
+{
+    IAnimal CreateAnimal();
+    IFood CreateFood();
+}
+
+public class DogFactory : IAnimalFactory
+{
+    public IAnimal CreateAnimal() => new Dog();
+    public IFood CreateFood() => new DogFood();
+}
+```
+
+**💡 面试加分点**：提到"我会根据业务复杂度选择，简单场景用工厂模式，复杂产品族用抽象工厂模式"
+
+---
+
+### Q3: 观察者模式和发布订阅模式的区别？
+
+**面试官想了解什么**：你对事件驱动架构的理解。
+
+**🎯 标准答案**：
+
+**模式区别**：
+1. **耦合度**：观察者模式紧耦合，发布订阅模式松耦合
+2. **通信方式**：观察者模式直接通信，发布订阅模式通过中介通信
+3. **扩展性**：发布订阅模式扩展性更好
+4. **实现复杂度**：观察者模式简单，发布订阅模式复杂
+
+**具体实现**：
+```csharp
+// 观察者模式
+public interface IObserver
+{
+    void Update(string message);
+}
+
+public class Subject
+{
+    private readonly List<IObserver> _observers = new();
+    
+    public void Attach(IObserver observer) => _observers.Add(observer);
+    public void Detach(IObserver observer) => _observers.Remove(observer);
+    
+    public void Notify(string message)
+    {
+        foreach (var observer in _observers)
+        {
+            observer.Update(message);
+        }
+    }
+}
+
+// 发布订阅模式
+public class EventBus
+{
+    private readonly Dictionary<string, List<Action<object>>> _handlers = new();
+    
+    public void Subscribe(string eventName, Action<object> handler)
+    {
+        if (!_handlers.ContainsKey(eventName))
+            _handlers[eventName] = new List<Action<object>>();
+        
+        _handlers[eventName].Add(handler);
+    }
+    
+    public void Publish(string eventName, object data)
+    {
+        if (_handlers.ContainsKey(eventName))
+        {
+            foreach (var handler in _handlers[eventName])
+            {
+                handler(data);
+            }
+        }
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用MediatR等成熟的事件总线库，简化发布订阅模式的实现"
+
+---
+
+## 🏗️ 实战场景分析
+
+### 场景1：电商订单系统设计模式应用
+
+**业务需求**：设计支持多种支付方式的订单系统
+
+**🎯 技术方案**：
+
+```
+订单创建 → 支付方式选择 → 支付处理 → 订单状态更新 → 通知发送
+   ↓         ↓              ↓          ↓              ↓
+  订单对象   策略模式        工厂模式    观察者模式      发布订阅
+```
+
+**核心实现**：
+1. **策略模式**：不同支付方式的处理策略
+2. **工厂模式**：创建不同类型的支付处理器
+3. **观察者模式**：订单状态变更通知
+4. **发布订阅模式**：异步事件处理
+
+**🔑 关键决策**：使用策略模式处理支付逻辑，使用观察者模式处理状态变更
+
+---
+
+### 场景2：插件系统架构设计
+
+**业务需求**：构建支持动态加载插件的系统
+
+**🎯 技术方案**：
+
+```
+插件加载 → 接口适配 → 功能扩展 → 插件管理 → 生命周期管理
+   ↓         ↓          ↓          ↓          ↓
+  反射机制   适配器模式   装饰器模式   工厂模式    观察者模式
+```
+
+**核心实现**：
+1. **反射机制**：动态发现和加载插件
+2. **适配器模式**：统一不同插件的接口
+3. **装饰器模式**：扩展插件功能
+4. **工厂模式**：创建插件实例
+
+---
+
+## 📊 设计模式对比图表
+
+### 创建型模式对比
+
+```
+创建型模式对比：
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   单例模式      │    │   工厂模式      │    │   建造者模式    │
+│                │    │                │    │                │
+│ 全局唯一实例   │    │ 统一创建接口    │    │ 复杂对象构建    │
+│ 资源管理       │    │ 类型封装        │    │ 分步构建        │
+│ 线程安全       │    │ 扩展性好        │    │ 构建过程控制    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### 行为型模式对比
+
+| 模式 | 用途 | 耦合度 | 扩展性 | 适用场景 | 推荐指数 |
+|------|------|--------|--------|----------|----------|
+| **策略模式** | 算法选择 | 低 | 高 | 多种算法 | ⭐⭐⭐⭐⭐ |
+| **观察者模式** | 事件通知 | 中等 | 中等 | 状态变更 | ⭐⭐⭐⭐⭐ |
+| **命令模式** | 请求封装 | 低 | 高 | 操作队列 | ⭐⭐⭐⭐ |
+| **模板方法** | 算法框架 | 高 | 中等 | 算法框架 | ⭐⭐⭐⭐ |
+
+---
 
 ## 1. 设计模式哲学深度解析
 
