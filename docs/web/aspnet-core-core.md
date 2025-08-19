@@ -663,32 +663,88 @@ public class NullScope : IDisposable
 ### Q1: 中间件的执行顺序为什么很重要？
 
 **A**: 中间件的执行顺序直接影响：
-- **异常处理**：异常处理中间件必须最先执行，确保能捕获所有异常
-- **性能优化**：静态文件中间件在路由之前执行，避免不必要的路由计算
-- **安全性**：HTTPS重定向在路由之前，避免重复重定向
-- **业务逻辑**：认证授权在业务逻辑之前，确保安全性
+
+**1. 异常处理机制**
+- **异常处理中间件必须最先执行**：确保能捕获后续中间件执行过程中的所有异常
+- **开发环境 vs 生产环境**：开发环境使用 `UseDeveloperExceptionPage()`，生产环境使用 `UseExceptionHandler()`
+- **异常日志记录**：在异常处理中间件中记录详细的异常信息
+
+**2. 性能优化考虑**
+- **静态文件中间件在路由之前**：避免对静态文件请求进行不必要的路由计算
+- **缓存中间件位置**：缓存中间件应该在需要缓存的内容之前执行
+- **压缩中间件**：响应压缩应该在内容生成之后，发送之前执行
+
+**3. 安全性保障**
+- **HTTPS重定向在路由之前**：避免重复重定向和路由计算
+- **认证授权顺序**：认证必须在授权之前，授权必须在业务逻辑之前
+- **CORS策略**：CORS中间件应该在认证之前执行
+
+**4. 业务逻辑依赖**
+- **依赖注入顺序**：确保所有依赖服务在业务中间件执行前已准备就绪
+- **会话管理**：会话中间件应该在需要会话数据的中间件之前执行
 
 **代码示例**：
 ```csharp
-// 错误的顺序
-app.UseRouting();           // 先路由
-app.UseStaticFiles();       // 后静态文件 - 错误！
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    // 1. 异常处理 - 必须放在最前面
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+    else
+    {
+        app.UseExceptionHandler("/Error");
+        app.UseHsts();
+    }
 
-// 正确的顺序
-app.UseStaticFiles();       // 先静态文件
-app.UseRouting();           // 后路由 - 正确！
+    // 2. HTTPS重定向 - 在路由之前
+    app.UseHttpsRedirection();
+
+    // 3. 静态文件 - 在路由之前，避免不必要的路由计算
+    app.UseStaticFiles();
+
+    // 4. 路由 - 确定请求的端点
+    app.UseRouting();
+
+    // 5. 认证授权 - 在端点执行之前
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    // 6. 业务中间件
+    app.UseCustomMiddleware();
+
+    // 7. 端点
+    app.UseEndpoints(endpoints =>
+    {
+        endpoints.MapControllers();
+    });
+}
 ```
+
+**常见错误顺序及后果**：
+- **静态文件在路由之后**：所有静态文件请求都会经过路由计算，降低性能
+- **认证在路由之前**：无法根据路由信息进行细粒度的认证控制
+- **异常处理在中间**：无法捕获前面中间件的异常
 
 ### Q2: Singleton 服务中注入 Scoped 服务会有什么问题？
 
-**A**: 会导致内存泄漏，因为：
-- Singleton 服务在整个应用程序生命周期内存在
-- Scoped 服务在请求结束时被释放
-- 如果 Singleton 持有 Scoped 引用，Scoped 服务永远不会被释放
+**A**: 会导致内存泄漏和资源管理问题，具体原因如下：
 
-**解决方案**：
+**1. 生命周期不匹配问题**
+- **Singleton 服务**：在整个应用程序生命周期内存在，直到应用程序关闭
+- **Scoped 服务**：在每个 HTTP 请求结束时被释放和回收
+- **问题根源**：如果 Singleton 持有 Scoped 服务的引用，Scoped 服务永远不会被释放，导致内存泄漏
+
+**2. 具体场景分析**
+- **数据库上下文**：EF Core 的 `DbContext` 通常是 Scoped 服务，包含数据库连接池
+- **缓存服务**：如果 Singleton 缓存服务持有 Scoped 的数据库上下文，会导致连接池耗尽
+- **日志服务**：Singleton 日志服务不应该持有 Scoped 的请求相关服务
+
+**3. 解决方案**
+
+**方案一：使用工厂模式（推荐）**
 ```csharp
-// 使用工厂模式
 public class SingletonService
 {
     private readonly IServiceProvider _serviceProvider;
@@ -698,67 +754,482 @@ public class SingletonService
         _serviceProvider = serviceProvider;
     }
     
-    public void Process()
+    public async Task ProcessAsync()
     {
         using var scope = _serviceProvider.CreateScope();
-        var scopedService = scope.ServiceProvider.GetRequiredService<ScopedService>();
-        // 使用 scopedService
+        var scopedService = scope.ServiceProvider.GetRequiredService<IScopedService>();
+        
+        try
+        {
+            await scopedService.DoWorkAsync();
+        }
+        catch (Exception ex)
+        {
+            // 记录日志
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<SingletonService>>();
+            logger.LogError(ex, "Error processing in singleton service");
+        }
     }
 }
 ```
 
+**方案二：使用 IServiceScopeFactory**
+```csharp
+public class SingletonService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    
+    public SingletonService(IServiceScopeFactory scopeFactory)
+    {
+        _scopeFactory = scopeFactory;
+    }
+    
+    public async Task ProcessAsync()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var scopedService = scope.ServiceProvider.GetRequiredService<IScopedService>();
+        await scopedService.DoWorkAsync();
+    }
+}
+```
+
+**方案三：重构服务设计**
+```csharp
+// 将需要 Scoped 服务的逻辑提取到 Scoped 服务中
+public interface IWorkService
+{
+    Task ProcessAsync();
+}
+
+public class WorkService : IWorkService
+{
+    private readonly IScopedService _scopedService;
+    
+    public WorkService(IScopedService scopedService)
+    {
+        _scopedService = scopedService;
+    }
+    
+    public async Task ProcessAsync()
+    {
+        await _scopedService.DoWorkAsync();
+    }
+}
+
+// Singleton 服务只负责协调，不直接使用 Scoped 服务
+public class SingletonService
+{
+    private readonly IWorkService _workService;
+    
+    public SingletonService(IWorkService workService)
+    {
+        _workService = workService;
+    }
+    
+    public async Task ProcessAsync()
+    {
+        await _workService.ProcessAsync();
+    }
+}
+```
+
+**4. 最佳实践**
+- **避免在 Singleton 中注入 Scoped 服务**
+- **使用工厂模式或 Scope 工厂创建临时作用域**
+- **考虑重构服务设计，将 Scoped 依赖提取到合适的服务中**
+- **在单元测试中验证服务生命周期配置**
+
 ### Q3: 如何实现配置热重载？
 
-**A**: 使用 `IOptionsMonitor<T>` 接口：
+**A**: 配置热重载允许在不重启应用程序的情况下更新配置，主要通过以下方式实现：
+
+**1. 配置源支持**
+- **文件配置源**：`appsettings.json`、`appsettings.{Environment}.json`
+- **环境变量**：支持环境变量覆盖配置文件
+- **命令行参数**：支持命令行参数覆盖配置
+- **用户密钥**：开发环境下的用户密钥存储
+
+**2. 配置接口选择**
+
+**IOptions<T>（不推荐用于热重载）**
+```csharp
+public class ConfigService
+{
+    private readonly AppSettings _settings;
+    
+    public ConfigService(IOptions<AppSettings> options)
+    {
+        _settings = options.Value; // 只在服务启动时读取一次
+    }
+}
+```
+
+**IOptionsMonitor<T>（推荐用于热重载）**
 ```csharp
 public class ConfigService
 {
     private readonly IOptionsMonitor<AppSettings> _settings;
+    private readonly ILogger<ConfigService> _logger;
     
-    public ConfigService(IOptionsMonitor<AppSettings> settings)
+    public ConfigService(IOptionsMonitor<AppSettings> settings, ILogger<ConfigService> logger)
     {
         _settings = settings;
+        _logger = logger;
         
         // 监听配置变化
         _settings.OnChange(newSettings =>
         {
-            // 处理配置更新
-            Console.WriteLine($"Config updated: {newSettings.DatabaseConnection}");
+            _logger.LogInformation("Configuration updated for {Service}", nameof(ConfigService));
+            HandleConfigurationChange(newSettings);
         });
+    }
+    
+    public AppSettings CurrentSettings => _settings.CurrentValue;
+    
+    private void HandleConfigurationChange(AppSettings newSettings)
+    {
+        // 处理配置更新逻辑
+        // 例如：重新初始化数据库连接、更新缓存等
     }
 }
 ```
 
+**IOptionsSnapshot<T>（请求级别快照）**
+```csharp
+public class ConfigService
+{
+    private readonly IOptionsSnapshot<AppSettings> _settings;
+    
+    public ConfigService(IOptionsSnapshot<AppSettings> settings)
+    {
+        _settings = settings;
+    }
+    
+    public AppSettings CurrentSettings => _settings.Value; // 每个请求获取最新配置
+}
+```
+
+**3. 配置热重载实现示例**
+
+**配置模型**：
+```csharp
+public class AppSettings
+{
+    public DatabaseSettings Database { get; set; }
+    public CacheSettings Cache { get; set; }
+    public LoggingSettings Logging { get; set; }
+}
+
+public class DatabaseSettings
+{
+    public string ConnectionString { get; set; }
+    public int CommandTimeout { get; set; }
+    public int MaxRetryCount { get; set; }
+}
+```
+
+**服务注册**：
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    // 配置选项
+    services.Configure<AppSettings>(Configuration);
+    
+    // 注册配置服务
+    services.AddScoped<IConfigService, ConfigService>();
+    
+    // 配置验证
+    services.AddOptions<AppSettings>()
+        .Bind(Configuration)
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+}
+```
+
+**配置更新处理**：
+```csharp
+public class ConfigUpdateHandler : IHostedService
+{
+    private readonly IOptionsMonitor<AppSettings> _settings;
+    private readonly ILogger<ConfigUpdateHandler> _logger;
+    private IDisposable _changeToken;
+    
+    public ConfigUpdateHandler(IOptionsMonitor<AppSettings> settings, ILogger<ConfigUpdateHandler> logger)
+    {
+        _settings = settings;
+        _logger = logger;
+    }
+    
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _changeToken = _settings.OnChange(HandleConfigurationChange);
+        return Task.CompletedTask;
+    }
+    
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _changeToken?.Dispose();
+        return Task.CompletedTask;
+    }
+    
+    private void HandleConfigurationChange(AppSettings newSettings)
+    {
+        _logger.LogInformation("Configuration updated at {Time}", DateTime.UtcNow);
+        
+        // 处理数据库连接更新
+        if (newSettings.Database != null)
+        {
+            UpdateDatabaseConnection(newSettings.Database);
+        }
+        
+        // 处理缓存配置更新
+        if (newSettings.Cache != null)
+        {
+            UpdateCacheConfiguration(newSettings.Cache);
+        }
+    }
+    
+    private void UpdateDatabaseConnection(DatabaseSettings dbSettings)
+    {
+        // 实现数据库连接更新逻辑
+    }
+    
+    private void UpdateCacheConfiguration(CacheSettings cacheSettings)
+    {
+        // 实现缓存配置更新逻辑
+    }
+}
+```
+
+**4. 最佳实践**
+- **使用 IOptionsMonitor<T> 实现真正的热重载**
+- **在配置更新时记录日志，便于问题排查**
+- **实现配置验证，确保配置更新的正确性**
+- **考虑配置更新的原子性，避免部分更新导致的问题**
+- **在配置更新时优雅地处理依赖服务的重新初始化**
+
 ### Q4: 如何优化中间件性能？
 
-**A**: 通过以下方式优化：
-1. **条件中间件**：根据环境或配置决定是否启用
-2. **短路优化**：尽早返回响应，避免不必要的处理
-3. **异步支持**：使用异步操作提高并发性能
-4. **缓存策略**：缓存计算结果，避免重复计算
+**A**: 中间件性能优化是提高 ASP.NET Core 应用程序响应速度的关键，主要通过以下方式实现：
+
+**1. 条件中间件优化**
+- **环境条件判断**：根据环境变量决定是否启用特定中间件
+- **配置条件判断**：根据配置文件决定中间件的行为
+- **功能开关**：使用功能标志控制中间件的启用/禁用
+
+**2. 短路优化策略**
+- **早期返回**：在中间件开始时就判断是否需要继续处理
+- **路径过滤**：只对特定路径应用中间件逻辑
+- **请求类型过滤**：根据 HTTP 方法或请求头决定处理逻辑
+
+**3. 异步操作优化**
+- **异步方法**：使用 `async/await` 避免阻塞线程
+- **并行处理**：对于独立的操作使用并行处理
+- **取消令牌支持**：实现 `CancellationToken` 支持，提高响应性
+
+**4. 缓存策略优化**
+- **结果缓存**：缓存中间件的计算结果
+- **配置缓存**：缓存配置信息，避免重复读取
+- **静态资源缓存**：对静态资源实现有效的缓存策略
 
 **代码示例**：
+
+**条件中间件实现**：
 ```csharp
 public class ConditionalMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IConfiguration _config;
+    private readonly ILogger<ConditionalMiddleware> _logger;
+    
+    public ConditionalMiddleware(RequestDelegate next, IConfiguration config, ILogger<ConditionalMiddleware> logger)
+    {
+        _next = next;
+        _config = config;
+        _logger = logger;
+    }
     
     public async Task InvokeAsync(HttpContext context)
     {
-        // 条件判断，避免不必要的处理
+        // 1. 环境条件判断
         if (!_config.GetValue<bool>("EnableFeature"))
         {
             await _next(context);
             return;
         }
         
-        // 执行特定逻辑
-        await ProcessFeature(context);
-        await _next(context);
+        // 2. 路径过滤
+        if (!context.Request.Path.StartsWithSegments("/api"))
+        {
+            await _next(context);
+            return;
+        }
+        
+        // 3. 请求类型过滤
+        if (context.Request.Method != "POST")
+        {
+            await _next(context);
+            return;
+        }
+        
+        // 4. 执行特定逻辑
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            await ProcessFeature(context);
+            await _next(context);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            _logger.LogInformation("Feature processing took {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+        }
+    }
+    
+    private async Task ProcessFeature(HttpContext context)
+    {
+        // 实现特定的业务逻辑
+        await Task.Delay(10); // 模拟处理时间
     }
 }
 ```
+
+**性能优化中间件**：
+```csharp
+public class PerformanceMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<PerformanceMiddleware> _logger;
+    
+    public PerformanceMiddleware(RequestDelegate next, IMemoryCache cache, ILogger<PerformanceMiddleware> logger)
+    {
+        _next = next;
+        _cache = cache;
+        _logger = logger;
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        var cacheKey = $"perf:{context.Request.Path}:{context.Request.Method}";
+        
+        // 1. 缓存检查
+        if (_cache.TryGetValue(cacheKey, out var cachedResult))
+        {
+            context.Response.StatusCode = 200;
+            await context.Response.WriteAsync(cachedResult.ToString());
+            return;
+        }
+        
+        // 2. 性能监控
+        var stopwatch = Stopwatch.StartNew();
+        var originalBodyStream = context.Response.Body;
+        
+        try
+        {
+            using var memoryStream = new MemoryStream();
+            context.Response.Body = memoryStream;
+            
+            await _next(context);
+            
+            stopwatch.Stop();
+            
+            // 3. 缓存结果（仅对成功的 GET 请求）
+            if (context.Response.StatusCode == 200 && context.Request.Method == "GET")
+            {
+                memoryStream.Position = 0;
+                var result = await new StreamReader(memoryStream).ReadToEndAsync();
+                
+                var cacheOptions = new MemoryCacheEntryOptions()
+                    .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(30));
+                
+                _cache.Set(cacheKey, result, cacheOptions);
+            }
+            
+            // 4. 写回响应
+            memoryStream.Position = 0;
+            await memoryStream.CopyToAsync(originalBodyStream);
+        }
+        finally
+        {
+            context.Response.Body = originalBodyStream;
+            _logger.LogInformation("Request {Path} processed in {ElapsedMs}ms", 
+                context.Request.Path, stopwatch.ElapsedMilliseconds);
+        }
+    }
+}
+```
+
+**异步优化中间件**：
+```csharp
+public class AsyncOptimizationMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly SemaphoreSlim _semaphore;
+    
+    public AsyncOptimizationMiddleware(RequestDelegate next)
+    {
+        _next = next;
+        _semaphore = new SemaphoreSlim(100, 100); // 限制并发数量
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        // 1. 并发控制
+        await _semaphore.WaitAsync();
+        try
+        {
+            // 2. 取消令牌支持
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            cts.CancelAfter(TimeSpan.FromSeconds(30)); // 30秒超时
+            
+            // 3. 并行处理（如果有多个独立操作）
+            var tasks = new List<Task>();
+            
+            // 并行执行独立操作
+            if (context.Request.Headers.ContainsKey("X-Parallel-Process"))
+            {
+                tasks.Add(ProcessTask1(cts.Token));
+                tasks.Add(ProcessTask2(cts.Token));
+                tasks.Add(ProcessTask3(cts.Token));
+                
+                await Task.WhenAll(tasks);
+            }
+            
+            await _next(context);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+    
+    private async Task ProcessTask1(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100, cancellationToken);
+    }
+    
+    private async Task ProcessTask2(CancellationToken cancellationToken)
+    {
+        await Task.Delay(150, cancellationToken);
+    }
+    
+    private async Task ProcessTask3(CancellationToken cancellationToken)
+    {
+        await Task.Delay(200, cancellationToken);
+    }
+}
+```
+
+**5. 最佳实践总结**
+- **合理使用条件判断**：避免不必要的中间件执行
+- **实现短路逻辑**：尽早返回，减少处理时间
+- **使用异步操作**：避免阻塞线程池
+- **实现缓存策略**：减少重复计算和 I/O 操作
+- **监控性能指标**：使用日志和指标监控中间件性能
+- **控制并发数量**：避免资源耗尽
+- **支持取消操作**：提高应用程序的响应性
 
 ## 📚 总结
 

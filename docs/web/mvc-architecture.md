@@ -207,34 +207,171 @@ public class LoggingActionFilter : IActionFilter
 
 **A**: 主要区别在于：
 
-**MVC**：
-- Controller 处理用户输入和业务逻辑
-- Model 和 View 通过 Controller 交互
-- 适合 Web 应用程序
+**1. MVC（Model-View-Controller）**
 
-**MVVM**：
-- ViewModel 作为 View 和 Model 之间的桥梁
-- 支持数据绑定和命令绑定
-- 适合桌面应用程序和现代 Web 应用
+**Model**：数据和业务逻辑
+**View**：界面展示  
+**Controller**：处理用户输入（如点击、提交），协调 Model 和 View 的交互
+
+**特点**：
+- Controller 负责调度，View 较"被动"
+- Model 和 View 通过 Controller 来解耦
+- 传统 Web 框架（ASP.NET MVC、Spring MVC）常用这种模式
+
+**⚠️ 注意**：在现代 Web 前端里，很多时候 View 也会直接绑定 Model（例如 React 的 state 就有点 Model 的影子），所以"严格 MVC"不常见。
+
+**2. MVVM（Model-View-ViewModel）**
+
+**Model**：数据和业务逻辑
+**View**：界面（XAML、HTML+框架）
+**ViewModel**：View 的抽象，提供属性和命令，供 View 绑定
+
+**特点**：
+- 双向数据绑定：View ↔ ViewModel ↔ Model
+- ViewModel 通过属性暴露数据，View 自动更新；用户操作通过命令绑定回传到 ViewModel
+- 减少了 Controller 层的存在感，ViewModel 起到了"Controller+部分Model"的作用
+
+**⚠️ 注意**：MVVM 并不仅限于桌面应用（WPF、UWP、Xamarin），在现代 Web 框架（如 Angular、Vue，甚至 React Hooks+state）也有 MVVM 的思想。
+
+**3. 关键区别总结**
+
+| 特性 | MVC | MVVM |
+|------|-----|------|
+| 交互方式 | Controller 调度 Model & View | 数据绑定 + 命令绑定 |
+| 角色职责 | Controller 负责输入逻辑 | ViewModel 负责状态管理和交互 |
+| View 与逻辑的关系 | View 通过 Controller 与 Model 通信 | View 与 ViewModel 双向绑定 |
+| 常见应用场景 | Web 后端框架（ASP.NET MVC、Spring MVC） | 桌面/移动端 UI（WPF、Xamarin）、现代前端框架 |
 
 ### Q2: 如何优化控制器的性能？
 
 **A**: 通过以下方式优化：
 
-1. **异步编程**：使用 async/await 提高并发性能
-2. **缓存策略**：缓存频繁访问的数据
-3. **分页处理**：减少数据传输量
-4. **延迟加载**：按需加载数据
+**1. 异步编程优化**
+- **使用 async/await**：避免阻塞线程，提高并发性能
+- **异步数据库操作**：使用 `ToListAsync()`, `FirstOrDefaultAsync()` 等异步方法
+- **并行处理**：使用 `Task.WhenAll()` 并行执行多个独立操作
+- **取消令牌支持**：实现 `CancellationToken` 支持，提高响应性
+
+**2. 缓存策略优化**
+- **内存缓存**：使用 `IMemoryCache` 缓存频繁访问的数据
+- **分布式缓存**：使用 Redis 等分布式缓存，支持多实例共享
+- **缓存键设计**：设计合理的缓存键，避免缓存冲突
+- **缓存失效策略**：设置合理的 TTL，及时更新过期数据
+
+**3. 数据查询优化**
+- **分页处理**：使用 `Skip().Take()` 或游标分页，减少数据传输量
+- **延迟加载**：使用 `Include()` 预加载关联数据，避免 N+1 查询
+- **投影查询**：使用 `Select()` 只返回需要的字段，减少数据传输
+- **查询优化**：使用 `AsNoTracking()` 避免 EF 变更跟踪开销
+
+**4. 响应优化**
+- **压缩响应**：启用 Gzip 压缩，减少网络传输
+- **ETag 支持**：实现 ETag 缓存，减少重复请求
+- **响应缓存**：使用 `[ResponseCache]` 特性缓存响应
+- **流式响应**：对于大文件，使用流式响应避免内存占用
+
+**代码示例**：
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class ProductsController : ControllerBase
+{
+    private readonly IProductService _productService;
+    private readonly IMemoryCache _cache;
+    
+    public ProductsController(IProductService productService, IMemoryCache cache)
+    {
+        _productService = productService;
+        _cache = cache;
+    }
+    
+    [HttpGet]
+    [ResponseCache(Duration = 300)] // 缓存5分钟
+    public async Task<ActionResult<PagedResult<ProductDto>>> GetProducts(
+        [FromQuery] ProductQueryParams queryParams,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = $"products:{queryParams.GetHashCode()}";
+        
+        if (_cache.TryGetValue(cacheKey, out PagedResult<ProductDto> cachedResult))
+        {
+            return Ok(cachedResult);
+        }
+        
+        var result = await _productService.GetProductsAsync(queryParams, cancellationToken);
+        
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(TimeSpan.FromMinutes(10))
+            .SetAbsoluteExpiration(TimeSpan.FromMinutes(30));
+            
+        _cache.Set(cacheKey, result, cacheOptions);
+        
+        return Ok(result);
+    }
+}
+```
 
 ### Q3: 模型绑定的数据源优先级是什么？
 
 **A**: 从高到低的优先级：
 
-1. **路由数据**：`[FromRoute]`
-2. **查询字符串**：`[FromQuery]`
-3. **表单数据**：`[FromForm]`
-4. **请求体**：`[FromBody]`
-5. **请求头**：`[FromHeader]`
+**1. 路由数据**：`[FromRoute]` - 最高优先级
+- 从 URL 路径中提取参数
+- 例如：`/api/products/{id}` 中的 `{id}` 参数
+- 适用于资源标识符等关键参数
+
+**2. 查询字符串**：`[FromQuery]` - 第二优先级
+- 从 URL 查询参数中提取
+- 例如：`/api/products?category=electronics&page=1`
+- 适用于过滤、分页、排序等可选参数
+
+**3. 表单数据**：`[FromForm]` - 第三优先级
+- 从 HTTP 表单中提取数据
+- 适用于 `application/x-www-form-urlencoded` 和 `multipart/form-data`
+- 常用于文件上传和表单提交
+
+**4. 请求体**：`[FromBody]` - 第四优先级
+- 从 HTTP 请求体中提取 JSON 或 XML 数据
+- 适用于复杂对象和大量数据
+- 常用于 POST、PUT 等操作
+
+**5. 请求头**：`[FromHeader]` - 最低优先级
+- 从 HTTP 请求头中提取数据
+- 适用于认证令牌、语言设置等元数据
+
+**自定义绑定示例**：
+```csharp
+public class ProductQueryModel
+{
+    [FromRoute]
+    public int Id { get; set; }
+    
+    [FromQuery]
+    public string Category { get; set; }
+    
+    [FromQuery]
+    public int Page { get; set; } = 1;
+    
+    [FromQuery]
+    public int PageSize { get; set; } = 10;
+    
+    [FromHeader(Name = "Accept-Language")]
+    public string Language { get; set; }
+}
+
+[HttpGet("{id}")]
+public async Task<ActionResult<Product>> GetProduct([FromRoute] int id, 
+    [FromQuery] string category,
+    [FromHeader(Name = "User-Agent")] string userAgent)
+{
+    // 实现逻辑
+}
+```
+
+**注意事项**：
+- 优先级可以通过显式指定 `[FromXxx]` 特性来覆盖
+- 如果没有指定特性，框架会按照默认优先级进行绑定
+- 绑定失败会抛出 `ModelBindingException` 或返回验证错误
 
 ## 📚 总结
 

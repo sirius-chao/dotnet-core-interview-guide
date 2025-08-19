@@ -512,7 +512,7 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
   - **调度策略**：可以选择同步调度、异步调度或混合调度
   - **性能考虑**：合理设置任务粒度，避免任务过小或过大
   - **具体实现**：
-    ```csharp
+```csharp
     // Task 调度策略示例
     public class TaskSchedulingExample
     {
@@ -605,9 +605,9 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
             {
                 return _tasks.ToArray();
             }
-        }
     }
-    ```
+}
+```
 
 - **同步上下文**：深入理解同步上下文的作用
   - **UI 线程同步**：在 WPF/WinForms 中确保异步操作完成后回到 UI 线程
@@ -638,7 +638,7 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
   - **执行计划**：查询提供者生成执行计划
   - **缓存机制**：缓存常用的查询计划
   - **具体实现**：
-    ```csharp
+```csharp
     // LINQ 查询执行机制示例
     public class LinqExecutionExample
     {
@@ -753,9 +753,9 @@ Span<T> 和 Memory<T> 是 .NET Core 2.1 引入的重要特性：
                 if (number % i == 0) return false;
             }
             return true;
-        }
     }
-    ```
+}
+```
 
 - **性能瓶颈识别**：识别 LINQ 查询的性能瓶颈
   - **N+1 查询问题**：避免在循环中执行数据库查询
