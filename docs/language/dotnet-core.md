@@ -108,631 +108,222 @@
 
 ---
 
-## 📊 架构对比图表
+## 🚀 技术要点总结
 
-### 传统架构 vs 微服务架构
+### 依赖注入核心概念
 
+**服务生命周期选择指南**：
+| 生命周期 | 适用场景 | 优势 | 注意事项 |
+|----------|----------|------|----------|
+| **Singleton** | 配置服务、日志服务、缓存服务 | 性能最好，内存效率高 | 避免状态，注意线程安全 |
+| **Scoped** | 数据库上下文、业务服务、用户会话 | 请求内共享，资源合理 | 避免跨请求使用 |
+| **Transient** | 工具类、辅助服务、轻量级服务 | 简单直接，无状态 | 避免频繁创建复杂对象 |
+
+**服务注册最佳实践**：
+```csharp
+// ✅ 推荐：接口注册，便于测试和扩展
+services.AddScoped<IRepository, Repository>();
+services.AddScoped<IUserService, UserService>();
+
+// ✅ 推荐：工厂模式，复杂对象创建
+services.AddScoped<IDbConnection>(sp => 
+    new SqlConnection(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")));
+
+// ✅ 推荐：选项模式，配置注入
+services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+services.AddScoped<IRepository>(sp => 
+    new Repository(sp.GetRequiredService<IOptions<DatabaseOptions>>().Value));
+
+// ❌ 避免：直接注册具体类型
+services.AddScoped<Repository>(); // 难以测试和扩展
 ```
-架构对比：
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   单体架构      │    │   微服务架构    │    │   云原生架构    │
-│                │    │                │    │                │
-│ 部署简单       │    │ 独立部署       │    │ 容器化部署     │
-│ 扩展困难       │    │ 水平扩展       │    │ 自动扩缩容     │
-│ 技术栈统一     │    │ 技术栈灵活     │    │ 云服务集成     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-### 性能指标对比
-
-| 指标 | 单体应用 | 微服务 | 云原生 |
-|------|----------|--------|--------|
-| **启动时间** | 快 | 中等 | 快 |
-| **内存使用** | 低 | 中等 | 低 |
-| **扩展性** | 差 | 好 | 最好 |
-| **维护成本** | 低 | 高 | 中等 |
 
 ---
 
-## 1. 依赖注入 (Dependency Injection)
+## 🔧 实战应用指南
 
-**依赖注入的设计哲学**
-依赖注入（Dependency Injection，DI）是一种设计模式，它实现了控制反转（Inversion of Control，IoC）原则。通过DI容器，应用程序的组件不再负责创建和管理其依赖对象，而是由容器负责提供这些依赖。
+### 场景1：微服务架构设计
 
-**DI的核心价值**：
-1. **松耦合**：组件之间通过接口交互，降低直接依赖
-2. **可测试性**：可以轻松替换依赖，便于单元测试
-3. **可维护性**：依赖关系清晰，便于理解和修改
-4. **可扩展性**：可以轻松添加新的实现或装饰器
-5. **生命周期管理**：容器自动管理对象的创建和销毁
+**业务需求**：构建可扩展的微服务架构，支持服务发现和负载均衡
 
-**服务生命周期的选择策略**：
-- **Singleton**：适用于无状态服务，如配置服务、日志服务
-- **Scoped**：适用于有状态服务，如数据库上下文、业务服务
-- **Transient**：适用于轻量级服务，如工具类、辅助服务
-
-**生命周期详解**：
-
-**Scoped（作用域）**：
-- **一个请求作用域内**：同一个对象实例
-- **跨方法共享**：在同一个 HTTP 请求中，无论经过多少个方法调用，注入的都是同一个对象实例
-- **生命周期**：从请求开始到请求结束
-
-**Transient（瞬时）**：
-- **每次注入都创建新实例**：每次从容器中获取服务时，都会创建一个全新的对象实例
-- **方法间独立**：即使在同一个请求中，不同方法注入的也是不同的对象实例
-
-### 1.1 服务生命周期
-```csharp
-// 在 Program.cs 或 Startup.cs 中
-services.AddSingleton<IMyService, MyService>();        // 单例，整个应用生命周期
-services.AddScoped<IRepository, Repository>();         // 作用域，每个请求一个实例
-services.AddTransient<IHelper, Helper>();              // 瞬时，每次请求都创建新实例
-
-// 工厂模式注册
-services.AddSingleton<IMyService>(sp => new MyService(sp.GetRequiredService<ILogger>()));
-
-**生命周期区别示例**：
-```csharp
-// 注册服务
-services.AddScoped<IMyService, MyService>();      // 作用域
-services.AddTransient<IHelper, Helper>();         // 瞬时
-
-// 控制器
-public class MyController : ControllerBase
-{
-    private readonly IMyService _scopedService;    // 作用域服务
-    private readonly IHelper _transientHelper;     // 瞬时服务
-    
-    public MyController(IMyService scopedService, IHelper transientHelper)
-    {
-        _scopedService = scopedService;
-        _transientHelper = transientHelper;
-    }
-    
-    [HttpGet]
-    public IActionResult Get()
-    {
-        // 调用业务服务
-        var result = _businessService.Process(_scopedService, _transientHelper);
-        return Ok(result);
-    }
-}
-
-// 业务服务
-public class BusinessService
-{
-    private readonly IMyService _scopedService;    // 作用域服务
-    private readonly IHelper _transientHelper;     // 瞬时服务
-    
-    public BusinessService(IMyService scopedService, IHelper transientHelper)
-    {
-        _scopedService = scopedService;
-        _transientHelper = transientHelper;
-    }
-    
-    public string Process(IMyService scopedParam, IHelper transientParam)
-    {
-        // 在同一个请求中：
-        // _scopedService 和 scopedParam 是同一个对象实例
-        // _transientHelper 和 transientParam 是不同的对象实例
-        
-        return "Processed";
-    }
-}
+**🎯 技术方案**：
+```
+服务注册 → 服务发现 → 负载均衡 → 服务调用 → 健康检查
+    ↓         ↓         ↓         ↓         ↓
+  服务注册   自动发现   智能路由     远程调用    状态监控
 ```
 
-### 1.2 服务注册最佳实践
+**核心实现**：
+1. **服务注册**：使用Consul或Eureka进行服务注册
+2. **服务发现**：实现服务发现客户端
+3. **负载均衡**：集成负载均衡器（如Nginx、HAProxy）
+4. **健康检查**：实现健康检查端点
+
+**依赖注入配置**：
 ```csharp
-// 构造函数注入（推荐）
-public class MyController
+// 微服务配置
+services.Configure<ServiceDiscoveryOptions>(configuration.GetSection("ServiceDiscovery"));
+services.AddScoped<IServiceDiscovery, ConsulServiceDiscovery>();
+services.AddScoped<ILoadBalancer, RoundRobinLoadBalancer>();
+
+// 服务客户端工厂
+services.AddHttpClient<IApiClient, ApiClient>()
+    .AddPolicyHandler(GetRetryPolicy())
+    .AddPolicyHandler(GetCircuitBreakerPolicy());
+```
+
+### 场景2：多租户系统设计
+
+**业务需求**：支持多租户隔离，每个租户有独立的数据和配置
+
+**🎯 技术方案**：
+```
+租户识别 → 上下文注入 → 数据隔离 → 配置隔离 → 权限控制
+    ↓         ↓         ↓         ↓         ↓
+  请求解析   依赖注入   数据过滤     配置切换    访问控制
+```
+
+**核心实现**：
+1. **租户识别**：从请求头、子域名或路径中识别租户
+2. **上下文注入**：将租户信息注入到依赖注入容器
+3. **数据隔离**：在数据访问层实现租户过滤
+4. **配置隔离**：为每个租户提供独立的配置
+
+**依赖注入配置**：
+```csharp
+// 租户上下文服务
+services.AddScoped<ITenantContext, TenantContext>();
+services.AddScoped<ITenantResolver, HeaderTenantResolver>();
+
+// 租户特定的服务注册
+services.AddScoped<ITenantService>(sp =>
 {
-    private readonly IMyService _service;
+    var tenantContext = sp.GetRequiredService<ITenantContext>();
+    var tenantId = tenantContext.CurrentTenantId;
+    
+    // 根据租户ID创建特定服务
+    return new TenantService(tenantId, sp.GetRequiredService<IConfiguration>());
+});
+```
 
-    public MyController(IMyService service)
-    {
-        _service = service;
-    }
-}
+---
 
-// 属性注入
-public class MyController
+## 📊 性能优化深度指南
+
+### 服务生命周期优化
+
+**性能影响分析**：
+| 生命周期 | 内存使用 | 创建开销 | GC压力 | 适用场景 |
+|----------|----------|----------|--------|----------|
+| **Singleton** | 最低 | 一次 | 最低 | 无状态服务 |
+| **Scoped** | 中等 | 每请求 | 中等 | 有状态服务 |
+| **Transient** | 最高 | 每次 | 最高 | 轻量服务 |
+
+**优化策略**：
+```csharp
+// 使用对象池减少Transient服务的创建开销
+services.AddSingleton<ObjectPool<ExpensiveObject>>(sp =>
 {
-    [Inject]
-    public IMyService Service { get; set; }
-}
+    var policy = new ExpensiveObjectPooledObjectPolicy();
+    return new DefaultObjectPool<ExpensiveObject>(policy, 10);
+});
 
-// 服务定位器（不推荐，但有时必要）
-public class MyService
+services.AddTransient<IExpensiveService>(sp =>
+{
+    var pool = sp.GetRequiredService<ObjectPool<ExpensiveObject>>();
+    return new ExpensiveService(pool);
+});
+
+// 使用工厂模式延迟创建
+services.AddSingleton<IFactory<ILazyService>, LazyServiceFactory>();
+services.AddTransient<ILazyService>(sp =>
+{
+    var factory = sp.GetRequiredService<IFactory<ILazyService>>();
+    return factory.Create();
+});
+```
+
+### 依赖注入性能优化
+
+**服务解析优化**：
+```csharp
+// 使用ServiceProvider优化服务解析
+public class OptimizedService
 {
     private readonly IServiceProvider _serviceProvider;
-    
-    public MyService(IServiceProvider serviceProvider)
+    private readonly Dictionary<Type, object> _serviceCache = new();
+
+    public OptimizedService(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
     }
-    
-    public void DoWork()
+
+    public T GetService<T>() where T : class
     {
-        using var scope = _serviceProvider.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<ITempService>();
-        // 使用服务
-    }
-}
-```
-
-### 1.3 高级注册模式
-```csharp
-// 条件注册
-if (environment.IsDevelopment())
-{
-    services.AddScoped<IDataService, MockDataService>();
-}
-else
-{
-    services.AddScoped<IDataService, RealDataService>();
-}
-
-// 装饰器模式
-services.AddScoped<IDataService, RealDataService>();
-services.Decorate<IDataService, CachingDataService>();
-services.Decorate<IDataService, LoggingDataService>();
-
-// 命名服务
-services.AddKeyedSingleton<ICache>("UserCache", new UserCache());
-services.AddKeyedSingleton<ICache>("ProductCache", new ProductCache());
-```
-
-## 2. 配置系统
-
-**配置系统的设计理念**
-.NET Core的配置系统提供了一个统一的、类型安全的配置管理方案。它支持多种配置源，支持配置热重载，并且可以轻松扩展。
-
-**配置系统的核心特性**：
-1. **多源支持**：支持JSON、环境变量、命令行参数、用户密钥等多种配置源
-2. **层次化配置**：支持嵌套配置，便于组织复杂配置
-3. **类型安全**：支持强类型配置绑定，编译时检查
-4. **热重载**：支持运行时配置更新，无需重启应用
-5. **验证支持**：支持配置验证，确保配置的正确性
-
-**配置源优先级**（从高到低）：
-- 命令行参数
-- 环境变量
-- 用户密钥（仅开发环境）
-- appsettings.{Environment}.json
-- appsettings.json
-- 默认值
-
-### 2.1 配置源
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-// 添加配置源
-builder.Configuration
-    .SetBasePath(Directory.GetCurrentDirectory())
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
-    .AddEnvironmentVariables()
-    .AddCommandLine(args)
-    .AddUserSecrets<Program>()
-    .AddAzureKeyVault("https://your-vault.vault.azure.net/");
-```
-
-### 2.2 强类型配置
-```csharp
-public class AppSettings
-{
-    public string ConnectionString { get; set; }
-    public int MaxRetryCount { get; set; }
-    public LoggingSettings Logging { get; set; }
-}
-
-public class LoggingSettings
-{
-    public string Level { get; set; }
-    public bool EnableConsole { get; set; }
-}
-
-// 在 Program.cs 中
-builder.Configuration.GetSection("App").Bind(new AppSettings());
-// 或者
-builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("App"));
-```
-
-### 2.3 配置验证
-```csharp
-public class AppSettings
-{
-    [Required]
-    public string ConnectionString { get; set; }
-
-    [Range(1, 10)]
-    public int MaxRetryCount { get; set; }
-}
-
-// 验证配置
-builder.Services.AddOptions<AppSettings>()
-    .Bind(builder.Configuration.GetSection("App"))
-    .ValidateDataAnnotations();
-
-// 自定义验证
-builder.Services.AddOptions<AppSettings>()
-    .Bind(builder.Configuration.GetSection("App"))
-    .Validate(settings =>
-    {
-        if (string.IsNullOrEmpty(settings.ConnectionString))
-            return false;
-        return true;
-    }, "Connection string is required");
-```
-
-### 2.4 配置热重载
-```csharp
-// 监听配置变化
-builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("App"));
-builder.Services.AddSingleton<IOptionsMonitor<AppSettings>>();
-
-// 在服务中使用
-public class MyService
-{
-    private readonly IOptionsMonitor<AppSettings> _options;
-    
-    public MyService(IOptionsMonitor<AppSettings> options)
-    {
-        _options = options;
-        
-        // 监听配置变化
-        _options.OnChange(settings =>
+        var type = typeof(T);
+        if (_serviceCache.TryGetValue(type, out var cached))
         {
-            // 处理配置变化
-            Console.WriteLine($"Connection string changed to: {settings.ConnectionString}");
-        });
-    }
-}
-```
-
-## 3. 日志系统
-
-**日志系统的设计原则**
-.NET Core的日志系统提供了一个统一的日志抽象，支持多种日志提供程序，并且对性能影响最小。它支持结构化日志、日志级别、日志作用域等高级特性。
-
-**日志系统的核心价值**：
-1. **统一抽象**：提供统一的ILogger接口，支持多种日志提供程序
-2. **结构化日志**：支持结构化数据，便于日志分析和查询
-3. **性能优化**：使用延迟评估和条件编译，最小化性能影响
-4. **可扩展性**：支持自定义日志提供程序和格式化器
-5. **配置灵活**：支持运行时配置日志级别和输出目标
-
-**日志级别的最佳实践**：
-- **Trace**：详细的调试信息，仅在开发环境使用
-- **Debug**：调试信息，帮助开发人员理解程序流程
-- **Information**：一般信息，记录重要的业务事件
-- **Warning**：警告信息，表示潜在问题但不影响功能
-- **Error**：错误信息，表示功能失败但系统仍可运行
-- **Critical**：严重错误，表示系统级故障
-
-### 3.1 基本使用
-```csharp
-public class MyService
-{
-    private readonly ILogger<MyService> _logger;
-
-    public MyService(ILogger<MyService> logger)
-    {
-        _logger = logger;
-    }
-
-    public void DoWork()
-    {
-        _logger.LogInformation("Starting work");
-        try
-        {
-            // 执行工作
-            _logger.LogInformation("Work completed successfully");
+            return (T)cached;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while doing work");
-        }
+
+        var service = _serviceProvider.GetRequiredService<T>();
+        _serviceCache[type] = service;
+        return service;
     }
 }
+
+// 注册优化服务
+services.AddScoped<IOptimizedService, OptimizedService>();
 ```
 
-### 3.2 结构化日志
-```csharp
-// 使用占位符
-_logger.LogInformation("User {UserId} logged in from {IPAddress}", userId, ipAddress);
+---
 
-// 使用范围
-using (_logger.BeginScope("Processing user {UserId}", userId))
-{
-    _logger.LogInformation("Starting user processing");
-    // 处理逻辑
-    _logger.LogInformation("User processing completed");
-}
-```
+## 🎯 面试重点总结
 
-### 3.3 日志配置
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft": "Warning",
-      "Microsoft.Hosting.Lifetime": "Information"
-    },
-    "Console": {
-      "LogLevel": {
-        "Default": "Information"
-      }
-    },
-    "File": {
-      "Path": "logs/app-{Date}.txt",
-      "LogLevel": {
-        "Default": "Information"
-      }
-    }
-  }
-}
-```
+### 高频技术问题
 
-### 3.4 自定义日志提供程序
-```csharp
-public class CustomLoggerProvider : ILoggerProvider
-{
-    public ILogger CreateLogger(string categoryName)
-    {
-        return new CustomLogger(categoryName);
-    }
+**Q1: 在Scoped服务中注入Singleton服务会有什么问题？**
 
-    public void Dispose() { }
-}
+**🎯 标准答案**：
+- **生命周期不匹配**：Singleton服务在整个应用生命周期中存在，而Scoped服务只在请求期间存在
+- **状态污染**：如果Singleton服务有状态，可能被多个请求共享，导致数据混乱
+- **资源泄漏**：Scoped服务可能持有Singleton服务的引用，导致资源无法及时释放
 
-public class CustomLogger : ILogger
-{
-    private readonly string _categoryName;
+**💡 面试加分点**：提到"我会使用依赖注入验证工具检查生命周期配置，确保服务注册的正确性"
 
-    public CustomLogger(string categoryName)
-    {
-        _categoryName = categoryName;
-    }
+**Q2: 如何实现配置热重载？**
 
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
-    {
-        // 自定义日志逻辑
-        var message = formatter(state, exception);
-        Console.WriteLine($"[{logLevel}] {_categoryName}: {message}");
-    }
+**🎯 标准答案**：
+- 使用IOptionsMonitor<T>监听配置变化
+- 实现配置变更通知机制
+- 使用配置源支持热重载（如文件配置、环境变量）
 
-    public bool IsEnabled(LogLevel logLevel) => true;
-    public IDisposable BeginScope<TState>(TState state) => null;
-}
+**💡 面试加分点**：提到"我会实现配置验证和变更日志，确保配置变更的安全性和可追溯性"
 
-// 注册自定义日志提供程序
-builder.Logging.AddProvider(new CustomLoggerProvider());
-```
+### 实战经验展示
 
-## 4. 中间件管道
+**项目案例**：高并发电商系统架构优化
 
-**中间件管道的设计理念**
-中间件管道是ASP.NET Core的核心概念，它允许请求在到达应用程序之前和响应返回客户端之前经过一系列组件。每个中间件都可以处理请求、修改响应，或者决定是否将请求传递给下一个中间件。
+**技术挑战**：支持10万+并发用户，要求响应时间<200ms
 
-**中间件管道的核心特性**：
-1. **管道模式**：请求按顺序流经每个中间件，形成处理管道
-2. **短路能力**：中间件可以决定不调用下一个中间件，直接返回响应
-3. **双向处理**：中间件可以在请求处理前后执行逻辑
-4. **可组合性**：中间件可以灵活组合，实现不同的处理流程
-5. **性能优化**：支持条件中间件，避免不必要的处理
+**解决方案**：
+1. 使用Scoped生命周期管理用户会话和业务上下文
+2. 实现服务工厂模式，支持动态服务创建
+3. 使用对象池优化频繁创建的对象
+4. 实现配置热重载，支持动态配置调整
 
-**中间件执行顺序的重要性**：
-- **异常处理**：异常处理中间件应该放在最前面
-- **认证授权**：认证应该在授权之前执行
-- **路由**：路由中间件应该在端点执行之前
-- **静态文件**：静态文件中间件应该在路由之前
-- **CORS**：CORS中间件应该在认证之前
+**性能提升**：系统响应时间从500ms降低到150ms，并发处理能力提升5倍
 
-### 4.1 中间件顺序
-```csharp
-var app = builder.Build();
+---
 
-app.UseExceptionHandler("/Error");
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseRouting();
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-```
+## 总结
 
-### 4.2 自定义中间件
-```csharp
-public class CustomMiddleware
-{
-    private readonly RequestDelegate _next;
-    private readonly ILogger<CustomMiddleware> _logger;
+.NET Core 依赖注入是构建可维护、可测试应用的核心技术，要真正掌握这些技术，需要：
 
-    public CustomMiddleware(RequestDelegate next, ILogger<CustomMiddleware> logger)
-    {
-        _next = next;
-        _logger = logger;
-    }
+1. **深入理解生命周期**：掌握Singleton、Scoped、Transient的区别和适用场景
+2. **掌握服务注册模式**：理解接口注册、工厂模式、选项模式等最佳实践
+3. **理解性能优化**：掌握对象池、延迟创建、服务缓存等优化策略
+4. **掌握实战应用**：能够将依赖注入应用到实际项目架构中
+5. **理解设计原则**：掌握控制反转、依赖倒置等设计原则
 
-    public async Task InvokeAsync(HttpContext context)
-    {
-        _logger.LogInformation("Request started: {Path}", context.Request.Path);
-
-        var sw = Stopwatch.StartNew();
-        await _next(context);
-        sw.Stop();
-
-        _logger.LogInformation("Request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-    }
-}
-
-// 扩展方法
-public static class CustomMiddlewareExtensions
-{
-    public static IApplicationBuilder UseCustomMiddleware(this IApplicationBuilder builder)
-    {
-        return builder.UseMiddleware<CustomMiddleware>();
-    }
-}
-```
-
-### 4.3 中间件短路
-```csharp
-public async Task InvokeAsync(HttpContext context)
-{
-    if (context.Request.Path.StartsWithSegments("/api"))
-    {
-        // 短路，不调用下一个中间件
-        context.Response.StatusCode = 404;
-        return;
-    }
-
-    await _next(context);
-}
-```
-
-### 4.4 条件中间件
-```csharp
-if (app.Environment.IsDevelopment())
-{
-    app.UseDeveloperExceptionPage();
-}
-else
-{
-    app.UseExceptionHandler("/Error");
-    app.UseHsts();
-}
-```
-
-## 5. 生命周期管理
-
-**应用程序生命周期的管理策略**
-.NET Core提供了完整的应用程序生命周期管理机制，包括启动、运行、停止和关闭等阶段。通过生命周期管理，应用程序可以优雅地处理启动和关闭过程。
-
-**生命周期管理的核心价值**：
-1. **优雅启动**：应用程序启动时执行必要的初始化工作
-2. **后台服务**：支持长时间运行的后台任务
-3. **优雅关闭**：应用程序关闭时执行清理工作
-4. **资源管理**：确保资源在应用程序生命周期内正确管理
-5. **状态监控**：监控应用程序的运行状态
-
-**生命周期阶段的处理策略**：
-- **启动阶段**：配置服务、初始化资源、启动后台服务
-- **运行阶段**：处理请求、执行后台任务、监控系统状态
-- **停止阶段**：停止接受新请求、完成正在处理的请求
-- **关闭阶段**：释放资源、保存状态、关闭连接
-
-### 5.1 IHostedService
-```csharp
-public class BackgroundService : IHostedService
-{
-    private Timer _timer;
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _timer = new Timer(DoWork, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _timer?.Change(Timeout.Infinite, 0);
-        return Task.CompletedTask;
-    }
-
-    private void DoWork(object state)
-    {
-        // 执行后台工作
-    }
-}
-
-// 注册服务
-services.AddHostedService<BackgroundService>();
-```
-
-### 5.2 BackgroundService 基类
-```csharp
-public class MyBackgroundService : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await DoWorkAsync(stoppingToken);
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                // 正常取消
-                break;
-            }
-            catch (Exception ex)
-            {
-                // 记录错误并继续
-                _logger.LogError(ex, "Error in background service");
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
-            }
-        }
-    }
-
-    private async Task DoWorkAsync(CancellationToken stoppingToken)
-    {
-        // 执行工作
-    }
-}
-```
-
-### 5.3 优雅关闭
-```csharp
-public class Program
-{
-    public static async Task Main(string[] args)
-    {
-        var host = CreateHostBuilder(args).Build();
-
-        // 注册关闭事件处理
-        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
-        lifetime.ApplicationStopping.Register(() =>
-        {
-            // 执行清理工作
-            Console.WriteLine("Application is stopping...");
-        });
-
-        lifetime.ApplicationStopped.Register(() =>
-        {
-            // 应用已完全停止
-            Console.WriteLine("Application has stopped");
-        });
-
-        await host.RunAsync();
-    }
-}
-```
-
-## 6. 面试重点
-
-### 6.1 高频问题
-1. **依赖注入生命周期**：Singleton、Scoped、Transient的区别和选择
-2. **配置系统**：多环境配置、热重载、验证
-3. **中间件管道**：执行顺序、短路、自定义中间件
-4. **日志系统**：结构化日志、性能影响、自定义提供程序
-5. **生命周期管理**：后台服务、优雅关闭
-
-### 6.2 代码示例准备
-- 自定义中间件的实现
-- 依赖注入的高级用法
-- 配置验证和热重载
-- 后台服务的实现
-- 优雅关闭的处理
-
-### 6.3 性能优化要点
-- 合理选择服务生命周期
-- 避免在中间件中执行耗时操作
-- 使用结构化日志提高查询效率
-- 合理配置日志级别
-- 后台服务的异常处理和重试机制
+只有深入理解这些核心技术，才能在面试中展现出真正的技术深度，也才能在项目中构建出高质量、高性能的应用架构。

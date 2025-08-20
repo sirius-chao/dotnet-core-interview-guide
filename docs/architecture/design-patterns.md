@@ -1738,25 +1738,283 @@ Console.WriteLine();
 objectStructure.Accept(visitor2);
 ```
 
-## 4. 面试重点
+## 🚀 技术要点总结
 
-### 4.1 高频问题
-1. **单例模式**：线程安全、懒加载、依赖注入
-2. **工厂模式**：简单工厂、工厂方法、抽象工厂的选择
-3. **建造者模式**：链式调用、参数验证
-4. **装饰器模式**：动态扩展功能、组合优于继承
-5. **观察者模式**：事件驱动、松耦合设计
+### 设计模式选择指南
 
-### 4.2 代码示例准备
-- 线程安全单例的实现
-- 工厂模式的实际应用
-- 装饰器模式的组合使用
-- 观察者模式的事件处理
-- 策略模式的算法切换
+**模式分类与适用场景**：
+| 模式类型 | 主要模式 | 适用场景 | 优势 | 注意事项 |
+|----------|----------|----------|------|----------|
+| **创建型** | 单例、工厂、建造者 | 对象创建复杂、需要控制创建过程 | 封装创建逻辑，提高灵活性 | 避免过度设计，保持简单 |
+| **结构型** | 适配器、装饰器、代理 | 需要组合对象、扩展功能 | 提高代码复用性，降低耦合 | 注意性能开销，避免过度包装 |
+| **行为型** | 策略、观察者、命令 | 算法变化、对象间通信 | 提高扩展性，支持开闭原则 | 避免过度抽象，保持可读性 |
 
-### 4.3 设计原则
-- **SOLID原则**：单一职责、开闭原则、里氏替换、接口隔离、依赖倒置
-- **DRY原则**：不要重复自己
-- **KISS原则**：保持简单
-- **组合优于继承**：优先使用组合和委托
-- **针对接口编程**：依赖抽象而非具体实现
+**设计原则应用**：
+```csharp
+// ✅ 推荐：遵循开闭原则，易于扩展
+public interface IPaymentStrategy
+{
+    void ProcessPayment(decimal amount);
+}
+
+public class PaymentProcessor
+{
+    private readonly IPaymentStrategy _strategy;
+    
+    public PaymentProcessor(IPaymentStrategy strategy)
+    {
+        _strategy = strategy;
+    }
+    
+    public void Process(decimal amount)
+    {
+        _strategy.ProcessPayment(amount);
+    }
+}
+
+// ❌ 避免：违反开闭原则，难以扩展
+public class PaymentProcessor
+{
+    public void ProcessPayment(string type, decimal amount)
+    {
+        if (type == "creditcard")
+        {
+            // 处理信用卡支付
+        }
+        else if (type == "paypal")
+        {
+            // 处理PayPal支付
+        }
+        // 添加新支付方式需要修改代码
+    }
+}
+```
+
+---
+
+## 🔧 实战应用指南
+
+### 场景1：电商支付系统设计
+
+**业务需求**：支持多种支付方式，要求易于扩展和维护
+
+**🎯 技术方案**：
+```
+支付请求 → 策略选择 → 支付处理 → 结果返回 → 状态更新
+    ↓         ↓         ↓         ↓         ↓
+  请求验证   策略匹配   具体实现     结果封装    状态同步
+```
+
+**核心实现**：
+1. **策略模式**：定义支付策略接口，实现不同支付方式
+2. **工厂模式**：根据支付类型创建对应的支付策略
+3. **装饰器模式**：为支付添加日志、监控、重试等功能
+4. **观察者模式**：支付完成后通知相关系统
+
+**代码实现**：
+```csharp
+// 支付策略接口
+public interface IPaymentStrategy
+{
+    Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request);
+}
+
+// 具体支付策略
+public class CreditCardPaymentStrategy : IPaymentStrategy
+{
+    public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request)
+    {
+        // 信用卡支付逻辑
+        return new PaymentResult { Success = true, TransactionId = Guid.NewGuid().ToString() };
+    }
+}
+
+// 支付策略工厂
+public class PaymentStrategyFactory
+{
+    private readonly Dictionary<string, IPaymentStrategy> _strategies;
+    
+    public PaymentStrategyFactory(IEnumerable<IPaymentStrategy> strategies)
+    {
+        _strategies = strategies.ToDictionary(s => s.GetType().Name.Replace("Strategy", "").ToLower());
+    }
+    
+    public IPaymentStrategy CreateStrategy(string paymentType)
+    {
+        if (_strategies.TryGetValue(paymentType, out var strategy))
+        {
+            return strategy;
+        }
+        throw new ArgumentException($"Unsupported payment type: {paymentType}");
+    }
+}
+
+// 支付处理器
+public class PaymentProcessor
+{
+    private readonly PaymentStrategyFactory _factory;
+    private readonly ILogger<PaymentProcessor> _logger;
+    
+    public PaymentProcessor(PaymentStrategyFactory factory, ILogger<PaymentProcessor> logger)
+    {
+        _factory = factory;
+        _logger = logger;
+    }
+    
+    public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request)
+    {
+        try
+        {
+            var strategy = _factory.CreateStrategy(request.PaymentType);
+            var result = await strategy.ProcessPaymentAsync(request);
+            
+            _logger.LogInformation("Payment processed successfully: {TransactionId}", result.TransactionId);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Payment processing failed");
+            throw;
+        }
+    }
+}
+```
+
+### 场景2：日志系统设计
+
+**业务需求**：支持多种日志输出方式，支持日志级别和格式化
+
+**🎯 技术方案**：
+```
+日志请求 → 级别过滤 → 格式化处理 → 输出分发 → 存储记录
+    ↓         ↓         ↓         ↓         ↓
+  日志生成   级别检查   格式转换     多路输出    持久化
+```
+
+**核心实现**：
+1. **装饰器模式**：为日志添加时间戳、上下文等信息
+2. **策略模式**：支持不同的日志格式化策略
+3. **观察者模式**：支持多个日志输出目标
+4. **建造者模式**：构建复杂的日志消息
+
+---
+
+## 📊 性能优化深度指南
+
+### 设计模式性能影响
+
+**性能开销分析**：
+| 设计模式 | 内存开销 | CPU开销 | 适用场景 | 优化建议 |
+|----------|----------|----------|----------|----------|
+| **单例模式** | 最低 | 最低 | 全局共享资源 | 使用Lazy<T>延迟初始化 |
+| **工厂模式** | 低 | 低 | 对象创建复杂 | 缓存工厂实例，避免重复创建 |
+| **策略模式** | 低 | 低 | 算法变化频繁 | 使用字典查找，避免if-else链 |
+| **装饰器模式** | 中等 | 中等 | 功能组合 | 控制装饰器层数，避免过度包装 |
+| **观察者模式** | 中等 | 中等 | 事件通知 | 使用弱引用，避免内存泄漏 |
+
+**性能优化策略**：
+```csharp
+// 使用对象池减少对象创建开销
+public class PaymentStrategyPool
+{
+    private readonly ConcurrentQueue<IPaymentStrategy> _pool;
+    private readonly Func<IPaymentStrategy> _factory;
+    
+    public PaymentStrategyPool(Func<IPaymentStrategy> factory, int initialSize = 10)
+    {
+        _factory = factory;
+        _pool = new ConcurrentQueue<IPaymentStrategy>();
+        
+        // 预创建对象
+        for (int i = 0; i < initialSize; i++)
+        {
+            _pool.Enqueue(_factory());
+        }
+    }
+    
+    public IPaymentStrategy Get()
+    {
+        if (_pool.TryDequeue(out var strategy))
+        {
+            return strategy;
+        }
+        return _factory();
+    }
+    
+    public void Return(IPaymentStrategy strategy)
+    {
+        _pool.Enqueue(strategy);
+    }
+}
+
+// 使用缓存优化策略查找
+public class CachedPaymentStrategyFactory
+{
+    private readonly ConcurrentDictionary<string, IPaymentStrategy> _cache = new();
+    private readonly Func<string, IPaymentStrategy> _factory;
+    
+    public CachedPaymentStrategyFactory(Func<string, IPaymentStrategy> factory)
+    {
+        _factory = factory;
+    }
+    
+    public IPaymentStrategy CreateStrategy(string paymentType)
+    {
+        return _cache.GetOrAdd(paymentType, _factory);
+    }
+}
+```
+
+---
+
+## 🎯 面试重点总结
+
+### 高频技术问题
+
+**Q1: 单例模式的线程安全问题如何解决？**
+
+**🎯 标准答案**：
+- 使用双重检查锁定（Double-Check Locking）
+- 使用Lazy<T>实现线程安全的延迟初始化
+- 使用静态构造函数保证线程安全
+- 在依赖注入容器中使用单例生命周期
+
+**💡 面试加分点**：提到"我会使用性能分析工具测量不同单例实现的性能差异，选择最适合的实现方式"
+
+**Q2: 如何避免过度使用设计模式？**
+
+**🎯 标准答案**：
+- 遵循YAGNI原则（You Aren't Gonna Need It）
+- 从简单实现开始，根据需求演进
+- 考虑维护成本和团队理解能力
+- 使用代码审查和重构保持代码质量
+
+**💡 面试加分点**：提到"我会定期进行代码审查，识别过度设计的问题，并指导团队进行重构"
+
+### 实战经验展示
+
+**项目案例**：高并发订单处理系统重构
+
+**技术挑战**：原有系统使用大量if-else，难以维护和扩展，性能瓶颈明显
+
+**解决方案**：
+1. 使用策略模式重构支付逻辑，支持多种支付方式
+2. 使用工厂模式管理订单处理器，提高代码复用性
+3. 使用观察者模式实现订单状态变更通知
+4. 使用装饰器模式添加日志、监控、重试等功能
+
+**性能提升**：系统响应时间从300ms降低到100ms，代码维护成本降低60%
+
+---
+
+## 总结
+
+设计模式是构建高质量软件的重要工具，要真正掌握这些模式，需要：
+
+1. **深入理解设计原则**：掌握SOLID原则、开闭原则等核心概念
+2. **掌握常用模式**：理解创建型、结构型、行为型模式的应用场景
+3. **理解性能影响**：掌握不同模式的性能特征和优化策略
+4. **掌握实战应用**：能够将设计模式应用到实际项目中
+5. **避免过度设计**：在复杂性和简单性之间找到平衡
+
+只有深入理解这些设计模式，才能在面试中展现出真正的技术深度，也才能在项目中构建出高质量、高性能的系统架构。
