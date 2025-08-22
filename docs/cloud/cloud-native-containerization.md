@@ -21,7 +21,7 @@
 
 ---
 
-## 🏆 故事化叙述：小李的云原生转型之旅
+## 🏆 真实案例：小李的云原生转型之旅
 
 > 💡 **真实案例**：小李是一名传统开发工程师，最近遇到了一个技术转型的挑战...
 > 
@@ -138,10 +138,10 @@ public IActionResult Health()
 // 就绪检查接口
 [HttpGet("ready")]
 public async Task<IActionResult> Ready()
-{
-    try
     {
-        // 检查数据库连接
+        try
+        {
+            // 检查数据库连接
         var dbHealthy = await _productService.CheckDatabaseHealthAsync();
         
         // 检查依赖服务
@@ -167,13 +167,13 @@ private async Task<bool> CheckDependenciesAsync()
     try
     {
         // 实现Redis健康检查
-        return true;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
-    catch
-    {
-        return false;
-    }
-}
 
 // 指标收集接口
 public interface IMetricsCollector
@@ -272,7 +272,7 @@ public class PrometheusMetricsCollector : IMetricsCollector
 
 ---
 
-## 🔍 问题驱动式：深入理解云原生架构
+## 🔍 深度解析：云原生架构核心原理
 
 > 🤔 **深度思考**：现在让我们回到小李的云原生转型问题...
 > 
@@ -646,7 +646,7 @@ public class KubernetesConfigGenerator
 
 ---
 
-## 📊 视觉化增强：云原生技术对比分析
+## 📊 技术对比：云原生技术对比分析
 
 ### 容器技术对比表
 
@@ -807,7 +807,7 @@ public class SecurityConfigGenerator
 
 ---
 
-## 💝 情感化表达：为什么云原生如此重要？
+## 💡 技术价值：云原生技术的重要性
 
 > 🚀 **云原生不仅仅是技术趋势**
 > 
