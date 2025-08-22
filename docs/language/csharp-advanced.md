@@ -54,7 +54,11 @@
 | **返回值** | 不支持 | 支持泛型返回值 | Task支持丰富的数据返回 |
 | **链式操作** | 不支持 | 支持ContinueWith | Task支持复杂的异步流程 |
 
-**💡 面试加分点**：提到"我会优先用 Task/TPL + async/await 作为默认抽象：I/O 密集改成真正异步，await 时不占线程；CPU 密集用 Task.Run/Parallel 交给线程池，必要时用 LongRunning 或独立线程避免池饥饿；只有当需要线程级能力（STA/优先级/亲和/长期后台）时，才会手动 new Thread。异常通过 await 传播，取消用 CancellationToken，组合用 WhenAll/await 实现。"
+**💡 面试加分点**：提到"我会优先用 Task/TPL + async/await 作为默认抽象：
+- I/O 密集改成真正异步，await 时不占线程；
+- CPU 密集用 Task.Run/Parallel 交给线程池，必要时用 LongRunning 或独立线程避免池饥饿；
+- 只有当需要线程级能力（STA/优先级/亲和/长期后台）时，才会手动 new Thread。
+- 异常通过 await 传播，取消用 CancellationToken，组合用 WhenAll/await 实现。"
 
 ---
 
