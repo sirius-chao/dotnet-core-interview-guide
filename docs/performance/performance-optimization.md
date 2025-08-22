@@ -155,35 +155,259 @@ public class MemoryMonitor
 
 ---
 
-## 🔍 深度解析：性能优化核心原理
+## 🔍 深入面试问题
 
-> 🤔 **深度思考**：现在让我们回到小王的电商系统问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么内存泄漏会导致系统性能急剧下降吗？"
-> 
-> 这个问题考察的是你对性能问题根本原因的理解，而不仅仅是症状描述。
+### Q3: 如何诊断和解决内存泄漏问题？
 
-### 🎯 核心问题：性能问题如何影响系统稳定性？
+**面试官想了解什么**：你对性能问题诊断的深入理解。
 
-**内存泄漏的连锁反应**：
+**🎯 标准答案**：
+
+**内存泄漏诊断步骤**：
+1. **监控内存使用**：使用dotnet-counters监控内存指标
+2. **分析内存转储**：使用dotnet-dump生成和分析内存转储
+3. **识别泄漏对象**：分析对象引用链，找出无法回收的对象
+4. **定位泄漏源头**：分析代码逻辑，找出泄漏原因
+
+**常见泄漏类型**：
+| 泄漏类型 | 常见原因 | 诊断方法 | 解决方案 |
+|----------|----------|----------|----------|
+| **事件订阅泄漏** | 事件订阅未取消 | 分析事件订阅关系 | 实现IDisposable，取消订阅 |
+| **静态引用泄漏** | 静态集合持续增长 | 分析静态对象引用 | 使用弱引用、定期清理 |
+| **资源未释放** | 文件句柄、数据库连接 | 监控资源使用 | 使用using语句、Dispose模式 |
+| **循环引用** | 对象间相互引用 | 分析对象图 | 使用弱引用、重构设计 |
+
+**具体实现**：
+```csharp
+// 内存泄漏检测工具
+public class MemoryLeakDetector
+{
+    private readonly ILogger<MemoryLeakDetector> _logger;
+    private readonly Dictionary<string, WeakReference> _trackedObjects = new();
+    
+    public void TrackObject<T>(string key, T obj) where T : class
+    {
+        _trackedObjects[key] = new WeakReference(obj);
+    }
+    
+    public void CheckForLeaks()
+    {
+        var leaks = new List<string>();
+        
+        foreach (var kvp in _trackedObjects)
+        {
+            if (kvp.Value.IsAlive)
+            {
+                leaks.Add(kvp.Key);
+            }
+        }
+        
+        if (leaks.Any())
+        {
+            _logger.LogWarning("Potential memory leaks detected: {Leaks}", string.Join(", ", leaks));
+        }
+    }
+}
+
+// 使用示例
+public class OrderService
+{
+    private readonly MemoryLeakDetector _detector;
+    
+    public void ProcessOrder(Order order)
+    {
+        // 跟踪订单对象
+        _detector.TrackObject($"Order_{order.Id}", order);
+        
+        // 处理订单...
+    }
+}
 ```
-内存泄漏 → 内存使用率上升 → GC频繁触发 → 应用响应变慢 → 请求堆积 → 系统崩溃
-    ↓         ↓         ↓         ↓         ↓         ↓
-  对象累积   内存不足   性能下降   用户体验差   资源耗尽   服务中断
+
+**💡 面试加分点**：提到"我会使用dotMemory、dotnet-dump等工具进行内存分析，建立内存使用基线，定期检查内存增长趋势，及时发现和解决泄漏问题"
+
+---
+
+### Q4: 如何优化GC性能？
+
+**面试官想了解什么**：你对垃圾回收优化的深入理解。
+
+**🎯 标准答案**：
+
+**GC性能优化策略**：
+1. **减少内存分配**：使用对象池、值类型、内存池
+2. **避免大对象**：控制对象大小，避免85KB阈值
+3. **优化GC配置**：选择合适的GC模式，调整参数
+4. **监控GC性能**：使用GC事件、性能计数器
+
+**GC配置优化**：
+| 配置项 | 优化策略 | 适用场景 | 性能影响 |
+|--------|----------|----------|----------|
+| **GC模式** | 服务器GC vs 工作站GC | 高并发 vs 低延迟 | 吞吐量 vs 响应时间 |
+| **并发GC** | 启用后台GC | 减少暂停时间 | 增加CPU使用 |
+| **压缩GC** | 启用内存压缩 | 减少内存碎片 | 增加GC时间 |
+| **大对象堆** | 控制大对象分配 | 减少LOH压力 | 降低内存使用 |
+
+**具体实现**：
+```csharp
+// GC性能监控和优化
+public class GCOptimizer
+{
+    private readonly ILogger<GCOptimizer> _logger;
+    private readonly GCMemoryInfo _lastGcInfo;
+    
+    public void ConfigureGC()
+    {
+        // 启用服务器GC（适用于高并发场景）
+        if (Environment.ProcessorCount > 1)
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        }
+        
+        // 设置GC延迟模式
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        
+        // 注册GC事件
+        GC.RegisterForFullGCNotification(10, 10);
+        GC.WaitForFullGCApproach(1000);
+    }
+    
+    public void MonitorGCPerformance()
+    {
+        var gcInfo = GC.GetGCMemoryInfo();
+        
+        _logger.LogInformation(
+            "GC Performance: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}, LOH={LOH}",
+            gcInfo.Generation0Collections,
+            gcInfo.Generation1Collections,
+            gcInfo.Generation2Collections,
+            gcInfo.GenerationLargeObjectHeapCollections);
+        
+        // 分析GC性能趋势
+        if (gcInfo.Generation2Collections > _lastGcInfo.Generation2Collections + 5)
+        {
+            _logger.LogWarning("Frequent Gen2 GC detected, consider memory optimization");
+        }
+    }
+}
+
+// 对象池实现
+public class ObjectPool<T> where T : class, new()
+{
+    private readonly ConcurrentQueue<T> _pool = new();
+    private readonly int _maxSize;
+    
+    public T Get()
+    {
+        return _pool.TryDequeue(out var item) ? item : new T();
+    }
+    
+    public void Return(T item)
+    {
+        if (_pool.Count < _maxSize)
+        {
+            _pool.Enqueue(item);
+        }
+    }
+}
 ```
 
-**性能优化的解决方案**：
-```
-性能监控 → 问题识别 → 优化实施 → 效果验证 → 持续改进
-    ↓         ↓         ↓         ↓         ↓
-  实时监控   根因分析   代码优化   性能测试   监控反馈
+**💡 面试加分点**：提到"我会根据应用场景选择合适的GC配置，使用GC事件监控GC性能，建立内存使用基线，通过对象池和内存池减少GC压力"
+
+---
+
+### Q5: 如何优化数据库查询性能？
+
+**面试官想了解什么**：你对数据库性能优化的深入理解。
+
+**🎯 标准答案**：
+
+**查询性能优化策略**：
+1. **索引优化**：创建合适的索引，避免索引失效
+2. **查询重写**：优化SQL语句，避免N+1查询
+3. **连接优化**：使用适当的JOIN类型，控制连接顺序
+4. **分页优化**：使用游标分页，避免OFFSET性能问题
+
+**性能优化技术**：
+| 优化技术 | 适用场景 | 性能提升 | 实施难度 |
+|----------|----------|----------|----------|
+| **索引优化** | 查询条件复杂 | 10-100倍 | 中等 |
+| **查询重写** | SQL语句复杂 | 2-10倍 | 高 |
+| **连接优化** | 多表关联 | 5-20倍 | 中等 |
+| **分页优化** | 大数据量分页 | 10-50倍 | 低 |
+| **缓存策略** | 重复查询多 | 10-100倍 | 低 |
+
+**具体实现**：
+```csharp
+// 查询性能优化示例
+public class QueryOptimizer
+{
+    private readonly IDbContext _context;
+    private readonly IMemoryCache _cache;
+    
+    // 优化1：避免N+1查询
+    public async Task<List<OrderWithCustomer>> GetOrdersWithCustomersAsync()
+    {
+        // 优化前：N+1查询
+        // var orders = await _context.Orders.ToListAsync();
+        // foreach (var order in orders)
+        // {
+        //     order.Customer = await _context.Customers.FindAsync(order.CustomerId);
+        // }
+        
+        // 优化后：单次查询
+        return await _context.Orders
+            .Include(o => o.Customer)
+            .Include(o => o.OrderItems)
+            .ToListAsync();
+    }
+    
+    // 优化2：使用游标分页
+    public async Task<List<Order>> GetOrdersPagedAsync(int pageSize, string cursor)
+    {
+        var query = _context.Orders.AsQueryable();
+        
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            var lastOrder = await _context.Orders
+                .Where(o => o.Id == cursor)
+                .FirstOrDefaultAsync();
+                
+            if (lastOrder != null)
+            {
+                query = query.Where(o => o.CreatedAt > lastOrder.CreatedAt);
+            }
+        }
+        
+        return await query
+            .OrderBy(o => o.CreatedAt)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+    
+    // 优化3：使用缓存
+    public async Task<Customer> GetCustomerAsync(int customerId)
+    {
+        var cacheKey = $"Customer_{customerId}";
+        
+        if (_cache.TryGetValue(cacheKey, out Customer cachedCustomer))
+        {
+            return cachedCustomer;
+        }
+        
+        var customer = await _context.Customers.FindAsync(customerId);
+        
+        if (customer != null)
+        {
+            _cache.Set(cacheKey, customer, TimeSpan.FromMinutes(30));
+        }
+        
+        return customer;
+    }
+}
 ```
 
-**性能提升原理**：
-- **内存管理**：减少内存分配，避免内存泄漏
-- **GC优化**：减少GC压力，提高应用响应性
-- **异步编程**：提高并发处理能力
-- **缓存策略**：减少重复计算和I/O操作
+**💡 面试加分点**：提到"我会使用SQL Server Profiler、EF Core日志分析查询性能，建立查询性能基线，通过索引优化、查询重写和缓存策略提升数据库性能"
 
 ---
 

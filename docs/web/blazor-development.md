@@ -196,35 +196,299 @@ else
 
 ---
 
-## 🔍 深度解析：Blazor架构核心原理
+## 🔍 深入面试问题
 
-> 🤔 **深度思考**：现在让我们回到小刘的技术选型问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么Blazor能显著提升.NET开发团队的开发效率吗？"
-> 
-> 这个问题考察的是你对Blazor技术优势的理解，而不仅仅是语法使用。
+### Q3: Blazor Server和Blazor WebAssembly如何选择？
 
-### 🎯 核心问题：Blazor如何提升开发效率？
+**面试官想了解什么**：你对Blazor技术选型的深入理解。
 
-**传统前后端分离的问题**：
+**🎯 标准答案**：
+
+**选择考虑因素**：
+1. **网络环境**：内网稳定用Server，外网不稳定用WebAssembly
+2. **性能要求**：首次加载快用Server，后续交互快用WebAssembly
+3. **离线需求**：需要离线功能用WebAssembly
+4. **团队技能**：前端技能强用WebAssembly，纯.NET团队用Server
+
+**技术对比**：
+| 特性 | Blazor Server | Blazor WebAssembly | 推荐场景 |
+|------|---------------|-------------------|----------|
+| **首次加载** | 快（只下载HTML） | 慢（下载运行时） | 内网应用、快速原型 |
+| **交互性能** | 中等（网络延迟） | 快（本地执行） | 复杂交互、用户体验要求高 |
+| **离线支持** | 不支持 | 支持PWA | 移动应用、离线需求 |
+| **扩展性** | 受服务器限制 | 客户端资源丰富 | 高并发、资源密集型 |
+| **部署复杂度** | 简单 | 复杂 | 快速上线、运维简单 |
+
+**💡 面试加分点**：提到"我会根据网络环境、性能要求、离线需求和团队技能进行综合评估，使用混合模式在不同场景下选择最适合的Blazor技术"
+
+---
+
+### Q4: 如何优化Blazor组件的性能？
+
+**面试官想了解什么**：你对Blazor性能优化的深入理解。
+
+**🎯 标准答案**：
+
+**性能优化策略**：
+1. **减少重新渲染**：使用ShouldRender、StateHasChanged控制渲染
+2. **组件隔离**：合理设计组件边界，避免不必要的状态传递
+3. **异步处理**：使用async/await避免阻塞UI线程
+4. **虚拟化**：大数据列表使用虚拟化组件
+
+**优化技术**：
+| 优化技术 | 适用场景 | 性能提升 | 实施难度 |
+|----------|----------|----------|----------|
+| **ShouldRender** | 频繁更新组件 | 20-50% | 低 |
+| **组件隔离** | 复杂页面 | 30-60% | 中等 |
+| **虚拟化** | 大数据列表 | 50-90% | 中等 |
+| **懒加载** | 复杂组件 | 40-70% | 中等 |
+| **缓存策略** | 重复数据 | 30-80% | 低 |
+
+**具体实现**：
+```csharp
+// Blazor性能优化示例
+public class OptimizedBlazorComponent : ComponentBase
+{
+    [Parameter] public int Id { get; set; }
+    [Parameter] public EventCallback<int> OnItemSelected { get; set; }
+    
+    private int _previousId;
+    private bool _shouldRender = true;
+    
+    // 优化1：控制重新渲染
+    protected override bool ShouldRender()
+    {
+        if (_previousId != Id)
+        {
+            _previousId = Id;
+            _shouldRender = true;
+        }
+        
+        return _shouldRender;
+    }
+    
+    // 优化2：异步加载数据
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id > 0)
+        {
+            await LoadDataAsync();
+            _shouldRender = false; // 数据加载完成后禁用渲染
+        }
+    }
+    
+    // 优化3：使用缓存
+    private static readonly Dictionary<int, object> _cache = new();
+    
+    private async Task LoadDataAsync()
+    {
+        if (_cache.TryGetValue(Id, out var cachedData))
+        {
+            // 使用缓存数据
+            return;
+        }
+        
+        // 加载新数据
+        var data = await LoadFromDatabaseAsync(Id);
+        _cache[Id] = data;
+    }
+    
+    // 优化4：防抖处理
+    private Timer _debounceTimer;
+    
+    private async Task HandleInputAsync(string value)
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await ProcessInputAsync(value);
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+}
+
+// 虚拟化组件示例
+public class VirtualizedList<T> : ComponentBase
+{
+    [Parameter] public List<T> Items { get; set; }
+    [Parameter] public RenderFragment<T> ItemTemplate { get; set; }
+    [Parameter] public int ItemHeight { get; set; } = 50;
+    [Parameter] public int VisibleItems { get; set; } = 10;
+    
+    private int _scrollTop;
+    private int _startIndex;
+    private int _endIndex;
+    
+    protected override void OnParametersSet()
+    {
+        CalculateVisibleRange();
+    }
+    
+    private void CalculateVisibleRange()
+    {
+        _startIndex = Math.Max(0, _scrollTop / ItemHeight);
+        _endIndex = Math.Min(Items.Count, _startIndex + VisibleItems);
+    }
+    
+    private void OnScroll(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int scrollTop))
+        {
+            _scrollTop = scrollTop;
+            CalculateVisibleRange();
+            StateHasChanged();
+        }
+    }
+    
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"height: {Items.Count * ItemHeight}px; overflow-y: auto;");
+        builder.AddAttribute(2, "onscroll", EventCallback.Factory.Create(this, OnScroll));
+        
+        // 只渲染可见项
+        for (int i = _startIndex; i < _endIndex; i++)
+        {
+            var item = Items[i];
+            builder.OpenElement(3, "div");
+            builder.AddAttribute(4, "style", $"position: absolute; top: {i * ItemHeight}px; height: {ItemHeight}px;");
+            builder.AddContent(5, ItemTemplate(item));
+            builder.CloseElement();
+        }
+        
+        builder.CloseElement();
+    }
+}
 ```
-.NET开发 → 学习JavaScript → 学习前端框架 → 前后端协调 → 部署复杂
-    ↓         ↓         ↓         ↓         ↓
-  技术栈切换   学习成本   框架学习   沟通成本   运维复杂
+
+**💡 面试加分点**：提到"我会使用ShouldRender控制组件渲染，实现虚拟化处理大数据列表，使用缓存策略减少重复计算，通过组件隔离和懒加载优化页面性能"
+
+---
+
+### Q5: Blazor如何与JavaScript互操作？
+
+**面试官想了解什么**：你对Blazor技术集成的深入理解。
+
+**🎯 标准答案**：
+
+**互操作方式**：
+1. **IJSRuntime**：调用JavaScript函数，传递参数
+2. **JSInvokable**：从JavaScript调用C#方法
+3. **JSObjectReference**：引用JavaScript对象
+4. **JSModule**：使用ES6模块
+
+**互操作场景**：
+| 场景 | 技术方案 | 优势 | 注意事项 |
+|------|----------|------|----------|
+| **调用JS库** | IJSRuntime.InvokeAsync | 简单直接 | 参数序列化、异常处理 |
+| **DOM操作** | JSObjectReference | 性能好 | 对象生命周期管理 |
+| **事件处理** | JSInvokable | 双向通信 | 方法签名匹配 |
+| **模块化** | JSModule | 现代标准 | 浏览器兼容性 |
+
+**具体实现**：
+```csharp
+// Blazor与JavaScript互操作示例
+public class BlazorJsInterop : ComponentBase
+{
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    
+    private IJSObjectReference _jsModule;
+    private DotNetObjectReference<BlazorJsInterop> _dotNetRef;
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // 加载JavaScript模块
+            _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./jsInterop.js");
+            
+            // 创建.NET引用
+            _dotNetRef = DotNetObjectReference.Create(this);
+            
+            // 注册.NET方法供JavaScript调用
+            await _jsModule.InvokeVoidAsync("registerDotNetReference", _dotNetRef);
+        }
+    }
+    
+    // 调用JavaScript函数
+    public async Task<string> CallJavaScriptFunctionAsync(string message)
+    {
+        try
+        {
+            var result = await JSRuntime.InvokeAsync<string>("showAlert", message);
+            return result;
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"JavaScript error: {ex.Message}");
+            return "Error";
+        }
+    }
+    
+    // 调用JavaScript模块
+    public async Task ProcessDataAsync(string data)
+    {
+        var result = await _jsModule.InvokeAsync<string>("processData", data);
+        Console.WriteLine($"Processed data: {result}");
+    }
+    
+    // 从JavaScript调用的.NET方法
+    [JSInvokable]
+    public static string GetDataFromDotNet()
+    {
+        return "Data from .NET";
+    }
+    
+    // 实例方法调用
+    [JSInvokable]
+    public async Task<string> GetInstanceDataAsync()
+    {
+        await Task.Delay(100); // 模拟异步操作
+        return $"Instance data at {DateTime.Now}";
+    }
+    
+    // 事件处理
+    [JSInvokable]
+    public static void HandleJsEvent(string eventData)
+    {
+        Console.WriteLine($"Received event: {eventData}");
+    }
+    
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+        _jsModule?.DisposeAsync();
+    }
+}
+
+// JavaScript模块 (jsInterop.js)
+export function registerDotNetReference(dotNetRef) {
+    // 注册.NET引用
+    window.dotNetRef = dotNetRef;
+    
+    // 设置事件监听器
+    document.addEventListener('click', function(e) {
+        if (dotNetRef) {
+            dotNetRef.invokeMethodAsync('HandleJsEvent', `Click at ${e.clientX}, ${e.clientY}`);
+        }
+    });
+}
+
+export function processData(data) {
+    // 处理数据
+    return `Processed: ${data.toUpperCase()}`;
+}
+
+export function showAlert(message) {
+    alert(message);
+    return "Alert shown";
+}
 ```
 
-**Blazor的解决方案**：
-```
-.NET开发 → 使用C#开发 → 复用.NET生态 → 统一部署 → 开发效率提升
-    ↓         ↓         ↓         ↓         ↓
-  技术栈统一   开发效率   生态复用   部署简单   团队协作
-```
-
-**Blazor优势原理**：
-- **技术栈统一**：前后端都使用C#，减少技术栈切换成本
-- **生态复用**：可以复用现有的.NET库和工具
-- **开发效率**：使用熟悉的语言和工具，提高开发速度
-- **团队协作**：前后端开发人员可以更好地协作
+**💡 面试加分点**：提到"我会使用IJSRuntime进行JavaScript调用，实现JSInvokable供JavaScript调用.NET方法，使用JSModule进行模块化开发，通过DotNetObjectReference管理对象生命周期"
 
 ---
 
@@ -291,18 +555,54 @@ public class OptimizedProductComponent : ComponentBase
         }
     }
     
-    private async Task SelectProductAsync()
+    private async Task HandleProductSelection()
     {
-        if (product != null)
+        if (OnProductSelected.HasDelegate)
         {
             await OnProductSelected.InvokeAsync(product);
         }
     }
     
-    protected override bool ShouldRender()
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
-        // 性能优化：避免不必要的重新渲染
-        return !isLoading || product != null || !string.IsNullOrEmpty(errorMessage);
+        if (isLoading)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddContent(1, "加载中...");
+            builder.CloseElement();
+            return;
+        }
+        
+        if (!string.IsNullOrEmpty(errorMessage))
+        {
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "error");
+            builder.AddContent(4, errorMessage);
+            builder.CloseElement();
+            return;
+        }
+        
+        if (product != null)
+        {
+            builder.OpenElement(5, "div");
+            builder.AddAttribute(6, "class", "product-card");
+            builder.AddAttribute(7, "onclick", EventCallback.Factory.Create(this, HandleProductSelection));
+            
+            builder.OpenElement(8, "h3");
+            builder.AddContent(9, product.Name);
+            builder.CloseElement();
+            
+            builder.OpenElement(10, "p");
+            builder.AddContent(11, product.Description);
+            builder.CloseElement();
+            
+            builder.OpenElement(12, "span");
+            builder.AddAttribute(13, "class", "price");
+            builder.AddContent(14, $"¥{product.Price}");
+            builder.CloseElement();
+            
+            builder.CloseElement();
+        }
     }
 }
 

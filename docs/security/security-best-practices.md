@@ -174,35 +174,567 @@ public class SecureUserServiceEF
 
 ---
 
-## 🔍 深度解析：安全防护核心原理
+## 🔍 深入面试问题
 
-> 🤔 **深度思考**：现在让我们回到小张的电商系统问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么SQL注入攻击如此危险，如何彻底防止？"
-> 
-> 这个问题考察的是你对安全威胁本质的理解，而不仅仅是防护措施。
+### Q3: 如何防止SQL注入攻击？
 
-### 🎯 核心问题：安全漏洞如何影响系统安全？
+**面试官想了解什么**：你对安全防护的深入理解。
 
-**SQL注入攻击的危害链**：
+**🎯 标准答案**：
+
+**SQL注入原理**：
+- **攻击方式**：通过恶意输入修改SQL语句结构
+- **危害程度**：可能导致数据泄露、数据篡改、系统被控制
+- **常见场景**：用户输入、URL参数、Cookie值
+
+**防护策略**：
+| 防护层级 | 技术方案 | 实现方式 | 防护效果 |
+|----------|----------|----------|----------|
+| **输入验证** | 白名单验证 | 正则表达式、类型检查 | 基础防护 |
+| **参数化查询** | 预编译语句 | 使用参数占位符 | 核心防护 |
+| **ORM框架** | Entity Framework | 使用LINQ查询 | 高级防护 |
+| **权限控制** | 最小权限 | 数据库用户权限限制 | 纵深防护 |
+
+**具体实现**：
+```csharp
+// 防止SQL注入的多种方法
+public class SqlInjectionProtection
+{
+    private readonly IDbContext _context;
+    private readonly ILogger<SqlInjectionProtection> _logger;
+    
+    // 方法1：使用参数化查询
+    public async Task<User> GetUserByIdAsync(int userId)
+    {
+        // 安全：使用参数化查询
+        var sql = "SELECT * FROM Users WHERE Id = @UserId";
+        var parameters = new { UserId = userId };
+        
+        return await _context.Database
+            .SqlQueryRaw<User>(sql, parameters)
+            .FirstOrDefaultAsync();
+    }
+    
+    // 方法2：使用Entity Framework
+    public async Task<User> GetUserByEmailAsync(string email)
+    {
+        // 安全：使用LINQ查询
+        return await _context.Users
+            .Where(u => u.Email == email)
+            .FirstOrDefaultAsync();
+    }
+    
+    // 方法3：输入验证
+    public async Task<bool> ValidateUserInputAsync(string input)
+    {
+        // 白名单验证
+        var allowedPattern = @"^[a-zA-Z0-9@._-]+$";
+        if (!Regex.IsMatch(input, allowedPattern))
+        {
+            _logger.LogWarning("Invalid input detected: {Input}", input);
+            return false;
+        }
+        
+        // 长度限制
+        if (input.Length > 100)
+        {
+            return false;
+        }
+        
+        // 特殊字符过滤
+        var dangerousChars = new[] { "'", "\"", ";", "--", "/*", "*/" };
+        if (dangerousChars.Any(c => input.Contains(c)))
+        {
+            _logger.LogWarning("Dangerous characters detected: {Input}", input);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // 方法4：使用存储过程
+    public async Task<User> GetUserByStoredProcedureAsync(int userId)
+    {
+        var result = await _context.Database
+            .SqlQueryRaw<User>("EXEC GetUserById @UserId", new { UserId = userId })
+            .FirstOrDefaultAsync();
+        
+        return result;
+    }
+}
+
+// 安全的数据库访问基类
+public abstract class SecureRepository<T> where T : class
+{
+    protected readonly IDbContext _context;
+    protected readonly ILogger _logger;
+    
+    protected SecureRepository(IDbContext context, ILogger logger)
+    {
+        _context = context;
+        _logger = logger;
+    }
+    
+    // 安全的查询方法
+    protected async Task<T> SafeQueryAsync(Expression<Func<T, bool>> predicate)
+    {
+        try
+        {
+            return await _context.Set<T>().Where(predicate).FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database query failed");
+            throw new SecurityException("Database access denied");
+        }
+    }
+    
+    // 安全的更新方法
+    protected async Task<bool> SafeUpdateAsync(T entity)
+    {
+        try
+        {
+            _context.Set<T>().Update(entity);
+            return await _context.SaveChangesAsync() > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database update failed");
+            throw new SecurityException("Database update denied");
+        }
+    }
+}
 ```
-恶意输入 → SQL注入 → 数据库被攻击 → 数据泄露 → 系统被控制 → 业务损失
-    ↓         ↓         ↓         ↓         ↓         ↓
-  用户输入   恶意代码   数据被窃取   信息泄露   系统沦陷   声誉受损
+
+**💡 面试加分点**：提到"我会使用多层防护策略，通过输入验证、参数化查询、ORM框架和权限控制，建立纵深防御体系，防止SQL注入攻击"
+
+---
+
+### Q4: 如何实现安全的身份认证系统？
+
+**面试官想了解什么**：你对身份认证的深入理解。
+
+**🎯 标准答案**：
+
+**认证系统设计**：
+1. **多因素认证**：密码+短信验证码+生物识别
+2. **JWT令牌管理**：短期访问令牌+长期刷新令牌
+3. **会话管理**：安全的会话存储和过期策略
+4. **密码策略**：强密码要求、定期更换、哈希存储
+
+**安全特性**：
+| 安全特性 | 实现方式 | 安全等级 | 用户体验 |
+|----------|----------|----------|----------|
+| **密码哈希** | bcrypt、Argon2 | 高 | 无影响 |
+| **盐值加密** | 随机盐值 | 高 | 无影响 |
+| **多因素认证** | TOTP、SMS | 最高 | 中等影响 |
+| **令牌轮换** | 自动刷新 | 高 | 无影响 |
+
+**具体实现**：
+```csharp
+// 安全的身份认证系统
+public class SecureAuthenticationService
+{
+    private readonly IUserRepository _userRepository;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly IJwtTokenService _jwtService;
+    private readonly ILogger<SecureAuthenticationService> _logger;
+    
+    // 用户登录
+    public async Task<AuthenticationResult> LoginAsync(LoginRequest request)
+    {
+        try
+        {
+            // 1. 输入验证
+            if (!ValidateLoginInput(request))
+            {
+                return AuthenticationResult.Failed("Invalid input");
+            }
+            
+            // 2. 查找用户
+            var user = await _userRepository.GetByEmailAsync(request.Email);
+            if (user == null)
+            {
+                // 防止用户枚举攻击
+                await Task.Delay(Random.Shared.Next(100, 500));
+                return AuthenticationResult.Failed("Invalid credentials");
+            }
+            
+            // 3. 验证密码
+            if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+            {
+                await LogFailedLoginAttemptAsync(user.Id, request.IpAddress);
+                return AuthenticationResult.Failed("Invalid credentials");
+            }
+            
+            // 4. 检查账户状态
+            if (!user.IsActive)
+            {
+                return AuthenticationResult.Failed("Account is disabled");
+            }
+            
+            // 5. 检查登录尝试次数
+            if (user.FailedLoginAttempts >= 5)
+            {
+                var lockoutEnd = user.LastFailedLoginAttempt?.AddMinutes(15);
+                if (lockoutEnd > DateTime.UtcNow)
+                {
+                    return AuthenticationResult.Failed($"Account is locked until {lockoutEnd}");
+                }
+                // 重置失败次数
+                user.FailedLoginAttempts = 0;
+            }
+            
+            // 6. 生成JWT令牌
+            var accessToken = _jwtService.GenerateAccessToken(user);
+            var refreshToken = _jwtService.GenerateRefreshToken(user.Id);
+            
+            // 7. 记录成功登录
+            await LogSuccessfulLoginAsync(user.Id, request.IpAddress);
+            
+            return AuthenticationResult.Success(accessToken, refreshToken, user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Login failed for email: {Email}", request.Email);
+            return AuthenticationResult.Failed("Authentication failed");
+        }
+    }
+    
+    // 令牌刷新
+    public async Task<AuthenticationResult> RefreshTokenAsync(string refreshToken)
+    {
+        try
+        {
+            // 验证刷新令牌
+            var userId = _jwtService.ValidateRefreshToken(refreshToken);
+            if (userId == null)
+            {
+                return AuthenticationResult.Failed("Invalid refresh token");
+            }
+            
+            // 获取用户信息
+            var user = await _userRepository.GetByIdAsync(userId.Value);
+            if (user == null || !user.IsActive)
+            {
+                return AuthenticationResult.Failed("User not found or inactive");
+            }
+            
+            // 生成新令牌
+            var newAccessToken = _jwtService.GenerateAccessToken(user);
+            var newRefreshToken = _jwtService.GenerateRefreshToken(user.Id);
+            
+            return AuthenticationResult.Success(newAccessToken, newRefreshToken, user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Token refresh failed");
+            return AuthenticationResult.Failed("Token refresh failed");
+        }
+    }
+    
+    // 多因素认证
+    public async Task<bool> VerifyMfaAsync(int userId, string mfaCode)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user?.MfaSecret == null)
+        {
+            return false;
+        }
+        
+        // 验证TOTP码
+        var totp = new Totp(Base32Encoding.ToBytes(user.MfaSecret));
+        return totp.VerifyTotp(mfaCode, out _, new VerificationWindow(1, 1));
+    }
+    
+    private bool ValidateLoginInput(LoginRequest request)
+    {
+        // 邮箱格式验证
+        if (string.IsNullOrEmpty(request.Email) || !IsValidEmail(request.Email))
+        {
+            return false;
+        }
+        
+        // 密码长度验证
+        if (string.IsNullOrEmpty(request.Password) || request.Password.Length < 8)
+        {
+            return false;
+        }
+        
+        // 防止SQL注入
+        if (ContainsDangerousCharacters(request.Email) || ContainsDangerousCharacters(request.Password))
+        {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    private bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private bool ContainsDangerousCharacters(string input)
+    {
+        var dangerousChars = new[] { "'", "\"", ";", "--", "/*", "*/", "<", ">", "&" };
+        return dangerousChars.Any(c => input.Contains(c));
+    }
+}
+
+// 密码哈希服务
+public class PasswordHasher : IPasswordHasher
+{
+    public string HashPassword(string password)
+    {
+        // 使用bcrypt进行密码哈希
+        return BCrypt.Net.BCrypt.HashPassword(password, BCrypt.Net.BCrypt.GenerateSalt(12));
+    }
+    
+    public bool VerifyPassword(string password, string hash)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hash);
+    }
+}
 ```
 
-**安全防护的解决方案**：
-```
-安全设计 → 多层防护 → 实时监控 → 快速响应 → 持续改进
-    ↓         ↓         ↓         ↓         ↓
-  安全架构   防护策略   威胁检测   应急响应   安全加固
+**💡 面试加分点**：提到"我会实现多因素认证系统，使用bcrypt进行密码哈希，实现JWT令牌的自动刷新，建立登录失败监控和账户锁定机制"
+
+---
+
+### Q5: 如何设计安全的授权系统？
+
+**面试官想了解什么**：你对授权控制的深入理解。
+
+**🎯 标准答案**：
+
+**授权模型设计**：
+1. **RBAC模型**：基于角色的访问控制
+2. **ABAC模型**：基于属性的访问控制
+3. **PBAC模型**：基于策略的访问控制
+4. **资源级授权**：细粒度的资源访问控制
+
+**授权策略**：
+| 授权类型 | 实现方式 | 适用场景 | 复杂度 |
+|----------|----------|----------|--------|
+| **角色授权** | 用户-角色-权限 | 简单业务 | 低 |
+| **属性授权** | 动态策略评估 | 复杂业务 | 高 |
+| **策略授权** | 规则引擎 | 灵活授权 | 中等 |
+| **资源授权** | 资源级权限 | 细粒度控制 | 高 |
+
+**具体实现**：
+```csharp
+// 安全的授权系统
+public class SecureAuthorizationService
+{
+    private readonly IUserRepository _userRepository;
+    private readonly IRoleRepository _roleRepository;
+    private readonly IPolicyEngine _policyEngine;
+    private readonly ILogger<SecureAuthorizationService> _logger;
+    
+    // 基于角色的授权
+    public async Task<bool> AuthorizeByRoleAsync(int userId, string resource, string action)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdWithRolesAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+            
+            // 检查用户角色权限
+            foreach (var role in user.Roles)
+            {
+                if (role.Permissions.Any(p => 
+                    p.Resource == resource && 
+                    p.Action == action && 
+                    p.IsActive))
+                {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Role-based authorization failed for user {UserId}", userId);
+            return false;
+        }
+    }
+    
+    // 基于属性的授权
+    public async Task<bool> AuthorizeByAttributeAsync(int userId, string resource, string action, object context)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+            
+            // 构建授权上下文
+            var authContext = new AuthorizationContext
+            {
+                User = user,
+                Resource = resource,
+                Action = action,
+                Context = context,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            // 使用策略引擎评估
+            return await _policyEngine.EvaluateAsync(authContext);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Attribute-based authorization failed for user {UserId}", userId);
+            return false;
+        }
+    }
+    
+    // 资源级授权
+    public async Task<bool> AuthorizeResourceAccessAsync(int userId, int resourceId, string resourceType, string action)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+            
+            // 检查资源所有权
+            if (await IsResourceOwnerAsync(userId, resourceId, resourceType))
+            {
+                return true;
+            }
+            
+            // 检查共享权限
+            if (await HasSharedAccessAsync(userId, resourceId, resourceType, action))
+            {
+                return true;
+            }
+            
+            // 检查角色权限
+            return await AuthorizeByRoleAsync(userId, resourceType, action);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Resource authorization failed for user {UserId}", userId);
+            return false;
+        }
+    }
+    
+    // 动态权限检查
+    public async Task<bool> CheckDynamicPermissionAsync(int userId, string permission, object context)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+            
+            // 构建动态权限上下文
+            var permissionContext = new DynamicPermissionContext
+            {
+                User = user,
+                Permission = permission,
+                Context = context,
+                Time = DateTime.UtcNow,
+                UserLocation = await GetUserLocationAsync(userId),
+                UserDevice = await GetUserDeviceAsync(userId)
+            };
+            
+            // 评估动态权限
+            return await _policyEngine.EvaluateDynamicPermissionAsync(permissionContext);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Dynamic permission check failed for user {UserId}", userId);
+            return false;
+        }
+    }
+}
+
+// 策略引擎
+public class PolicyEngine : IPolicyEngine
+{
+    private readonly ILogger<PolicyEngine> _logger;
+    private readonly List<IAuthorizationPolicy> _policies;
+    
+    public PolicyEngine(ILogger<PolicyEngine> logger, IEnumerable<IAuthorizationPolicy> policies)
+    {
+        _logger = logger;
+        _policies = policies.ToList();
+    }
+    
+    public async Task<bool> EvaluateAsync(AuthorizationContext context)
+    {
+        try
+        {
+            foreach (var policy in _policies)
+            {
+                if (policy.CanHandle(context))
+                {
+                    var result = await policy.EvaluateAsync(context);
+                    if (!result)
+                    {
+                        _logger.LogInformation("Policy {PolicyType} denied access for user {UserId}", 
+                            policy.GetType().Name, context.User.Id);
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Policy evaluation failed");
+            return false; // 默认拒绝
+        }
+    }
+}
+
+// 授权策略接口
+public interface IAuthorizationPolicy
+{
+    bool CanHandle(AuthorizationContext context);
+    Task<bool> EvaluateAsync(AuthorizationContext context);
+}
+
+// 时间策略示例
+public class TimeBasedPolicy : IAuthorizationPolicy
+{
+    public bool CanHandle(AuthorizationContext context)
+    {
+        return context.Resource == "sensitive_data";
+    }
+    
+    public async Task<bool> EvaluateAsync(AuthorizationContext context)
+    {
+        var currentHour = DateTime.UtcNow.Hour;
+        
+        // 只允许在办公时间访问敏感数据
+        return currentHour >= 9 && currentHour <= 18;
+    }
+}
 ```
 
-**安全防护原理**：
-- **输入验证**：在数据进入系统前进行验证和过滤
-- **参数化查询**：使用参数化查询防止SQL注入
-- **权限控制**：实现最小权限原则，限制用户访问范围
-- **加密保护**：对敏感数据进行加密存储和传输
+**💡 面试加分点**：提到"我会实现多层次授权系统，使用RBAC+ABAC混合模型，实现资源级权限控制，通过策略引擎支持动态权限评估"
 
 ---
 

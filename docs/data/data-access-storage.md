@@ -349,35 +349,370 @@ public class ProductService : IProductService
 
 ---
 
-## 🔍 深度解析：数据访问设计核心原理
+## 🔍 深入面试问题
 
-> 🤔 **深度思考**：现在让我们回到小张的数据访问层重构问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么Repository模式能显著提升代码的可维护性和可测试性吗？"
-> 
-> 这个问题考察的是你对设计模式本质的理解，而不仅仅是语法使用。
+### Q3: Repository模式和Unit of Work模式如何配合使用？
 
-### 🎯 核心问题：数据访问设计如何影响系统质量？
+**面试官想了解什么**：你对数据访问模式的深入理解。
 
-**传统数据访问的问题**：
+**🎯 标准答案**：
+
+**模式配合原理**：
+1. **Repository模式**：封装数据访问逻辑，提供统一的CRUD接口
+2. **Unit of Work模式**：管理事务边界，确保数据一致性
+3. **配合机制**：Repository负责数据操作，Unit of Work负责事务管理
+
+**实现架构**：
+| 组件 | 职责 | 实现方式 | 优势 |
+|------|------|----------|------|
+| **Repository** | 数据访问抽象 | 接口+实现类 | 易于测试、代码复用 |
+| **Unit of Work** | 事务管理 | 事务上下文 | 数据一致性、性能优化 |
+| **Service层** | 业务逻辑 | 业务服务类 | 业务封装、逻辑清晰 |
+| **Controller** | 请求处理 | API控制器 | 请求路由、参数验证 |
+
+**具体实现**：
+```csharp
+// Repository和Unit of Work配合使用
+public class OrderService
+{
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IOrderRepository _orderRepository;
+    private readonly IInventoryRepository _inventoryRepository;
+    
+    public OrderService(IUnitOfWork unitOfWork, IOrderRepository orderRepository, IInventoryRepository inventoryRepository)
+    {
+        _unitOfWork = unitOfWork;
+        _orderRepository = orderRepository;
+        _inventoryRepository = inventoryRepository;
+    }
+    
+    public async Task<OrderResult> CreateOrderAsync(CreateOrderRequest request)
+    {
+        try
+        {
+            // 开始事务
+            _unitOfWork.BeginTransaction();
+            
+            // 创建订单
+            var order = new Order
+            {
+                CustomerId = request.CustomerId,
+                Items = request.Items,
+                TotalAmount = request.Items.Sum(i => i.Price * i.Quantity)
+            };
+            
+            await _orderRepository.AddAsync(order);
+            
+            // 扣减库存
+            foreach (var item in request.Items)
+            {
+                var inventory = await _inventoryRepository.GetByProductIdAsync(item.ProductId);
+                if (inventory.Quantity < item.Quantity)
+                {
+                    throw new InsufficientInventoryException($"Product {item.ProductId} insufficient inventory");
+                }
+                
+                inventory.Quantity -= item.Quantity;
+                await _inventoryRepository.UpdateAsync(inventory);
+            }
+            
+            // 提交事务
+            await _unitOfWork.CommitAsync();
+            
+            return new OrderResult { Success = true, OrderId = order.Id };
+        }
+        catch (Exception)
+        {
+            // 回滚事务
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+    }
+}
+
+// Unit of Work实现
+public class UnitOfWork : IUnitOfWork
+{
+    private readonly DbContext _context;
+    private IDbContextTransaction _transaction;
+    
+    public UnitOfWork(DbContext context)
+    {
+        _context = context;
+    }
+    
+    public void BeginTransaction()
+    {
+        _transaction = _context.Database.BeginTransaction();
+    }
+    
+    public async Task CommitAsync()
+    {
+        await _context.SaveChangesAsync();
+        await _transaction.CommitAsync();
+    }
+    
+    public async Task RollbackAsync()
+    {
+        await _transaction.RollbackAsync();
+    }
+    
+    public void Dispose()
+    {
+        _transaction?.Dispose();
+        _context?.Dispose();
+    }
+}
 ```
-直接访问 → 代码分散 → 难以维护 → 难以测试 → 质量下降
-    ↓         ↓         ↓         ↓         ↓
-  业务耦合   逻辑混乱   修改困难   测试复杂   系统不稳定
+
+**💡 面试加分点**：提到"我会使用Repository模式封装数据访问逻辑，使用Unit of Work管理事务边界，通过依赖注入实现松耦合，确保数据一致性和代码可测试性"
+
+---
+
+### Q4: 如何设计高性能的数据访问层？
+
+**面试官想了解什么**：你对性能优化的深入理解。
+
+**🎯 标准答案**：
+
+**性能优化策略**：
+1. **查询优化**：使用索引、避免N+1查询、优化JOIN操作
+2. **缓存策略**：多级缓存、缓存失效策略、分布式缓存
+3. **连接池管理**：连接复用、连接监控、连接配置优化
+4. **异步处理**：异步查询、并行处理、非阻塞操作
+
+**性能优化技术**：
+| 优化技术 | 适用场景 | 性能提升 | 实施难度 |
+|----------|----------|----------|----------|
+| **查询优化** | 复杂查询 | 10-100倍 | 中等 |
+| **缓存策略** | 重复查询 | 10-100倍 | 低 |
+| **连接池** | 高并发 | 2-10倍 | 低 |
+| **异步处理** | I/O密集型 | 5-20倍 | 中等 |
+| **分页优化** | 大数据量 | 10-50倍 | 低 |
+
+**具体实现**：
+```csharp
+// 高性能数据访问层实现
+public class HighPerformanceDataAccess
+{
+    private readonly IDbContext _context;
+    private readonly IMemoryCache _cache;
+    private readonly IDistributedCache _distributedCache;
+    private readonly IQueryOptimizer _queryOptimizer;
+    
+    // 优化1：查询缓存
+    public async Task<List<Order>> GetOrdersWithCacheAsync(int customerId)
+    {
+        var cacheKey = $"Orders_Customer_{customerId}";
+        
+        if (_cache.TryGetValue(cacheKey, out List<Order> cachedOrders))
+        {
+            return cachedOrders;
+        }
+        
+        var orders = await _context.Orders
+            .Where(o => o.CustomerId == customerId)
+            .Include(o => o.OrderItems)
+            .ToListAsync();
+        
+        _cache.Set(cacheKey, orders, TimeSpan.FromMinutes(30));
+        return orders;
+    }
+    
+    // 优化2：批量操作
+    public async Task<int> BatchInsertOrdersAsync(List<Order> orders)
+    {
+        // 使用EF Core的批量插入
+        _context.Orders.AddRange(orders);
+        return await _context.SaveChangesAsync();
+    }
+    
+    // 优化3：异步并行查询
+    public async Task<OrderSummary> GetOrderSummaryAsync(int customerId)
+    {
+        var tasks = new[]
+        {
+            GetOrderCountAsync(customerId),
+            GetTotalAmountAsync(customerId),
+            GetRecentOrdersAsync(customerId)
+        };
+        
+        var results = await Task.WhenAll(tasks);
+        
+        return new OrderSummary
+        {
+            OrderCount = results[0],
+            TotalAmount = results[1],
+            RecentOrders = results[2]
+        };
+    }
+    
+    // 优化4：查询优化
+    public async Task<List<Order>> GetOptimizedOrdersAsync(OrderQuery query)
+    {
+        var optimizedQuery = _queryOptimizer.OptimizeQuery(_context.Orders);
+        
+        // 应用查询条件
+        if (query.CustomerId.HasValue)
+        {
+            optimizedQuery = optimizedQuery.Where(o => o.CustomerId == query.CustomerId);
+        }
+        
+        if (query.StartDate.HasValue)
+        {
+            optimizedQuery = optimizedQuery.Where(o => o.CreatedAt >= query.StartDate);
+        }
+        
+        if (query.EndDate.HasValue)
+        {
+            optimizedQuery = optimizedQuery.Where(o => o.CreatedAt <= query.EndDate);
+        }
+        
+        // 应用分页和排序
+        optimizedQuery = optimizedQuery
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize);
+        
+        return await optimizedQuery.ToListAsync();
+    }
+}
+
+// 查询优化器
+public class QueryOptimizer : IQueryOptimizer
+{
+    public IQueryable<T> OptimizeQuery<T>(IQueryable<T> query)
+    {
+        // 应用查询优化策略
+        // 1. 添加必要的Include
+        // 2. 优化Where条件顺序
+        // 3. 应用索引提示
+        return query;
+    }
+}
 ```
 
-**Repository模式的解决方案**：
-```
-抽象接口 → 统一管理 → 易于维护 → 易于测试 → 质量提升
-    ↓         ↓         ↓         ↓         ↓
-  业务解耦   逻辑清晰   修改简单   测试简单   系统稳定
+**💡 面试加分点**：提到"我会使用多级缓存策略，实现查询优化器，使用异步并行处理，建立性能监控体系，通过连接池和批量操作提升数据访问性能"
+
+---
+
+### Q5: 如何保证分布式环境下的数据一致性？
+
+**面试官想了解什么**：你对分布式系统的深入理解。
+
+**🎯 标准答案**：
+
+**数据一致性挑战**：
+- **网络分区**：服务间网络不可用
+- **时钟偏差**：不同服务的系统时间不同步
+- **并发冲突**：多个服务同时修改同一数据
+- **事务边界**：跨服务的事务难以保证原子性
+
+**一致性策略**：
+| 策略 | 一致性级别 | 性能影响 | 适用场景 |
+|------|------------|----------|----------|
+| **强一致性** | 强一致性 | 高延迟、低吞吐 | 金融交易、库存管理 |
+| **最终一致性** | 最终一致性 | 低延迟、高吞吐 | 用户信息、日志数据 |
+| **因果一致性** | 因果一致性 | 中等延迟、中等吞吐 | 社交网络、消息系统 |
+| **会话一致性** | 会话内一致 | 低延迟、高吞吐 | Web应用、移动应用 |
+
+**具体实现**：
+```csharp
+// 分布式数据一致性实现
+public class DistributedDataConsistency
+{
+    private readonly IDistributedCache _cache;
+    private readonly IMessageQueue _messageQueue;
+    private readonly IEventStore _eventStore;
+    
+    // 策略1：事件溯源
+    public async Task<OrderResult> CreateOrderWithEventSourcingAsync(CreateOrderRequest request)
+    {
+        var orderId = Guid.NewGuid();
+        
+        // 创建订单事件
+        var orderCreatedEvent = new OrderCreatedEvent
+        {
+            OrderId = orderId,
+            CustomerId = request.CustomerId,
+            Items = request.Items,
+            Timestamp = DateTime.UtcNow
+        };
+        
+        // 存储事件
+        await _eventStore.AppendEventAsync(orderId, orderCreatedEvent);
+        
+        // 发布事件
+        await _messageQueue.PublishAsync("OrderCreated", orderCreatedEvent);
+        
+        return new OrderResult { Success = true, OrderId = orderId };
+    }
+    
+    // 策略2：Saga模式
+    public async Task<OrderResult> CreateOrderWithSagaAsync(CreateOrderRequest request)
+    {
+        var sagaId = Guid.NewGuid();
+        
+        try
+        {
+            // 步骤1：创建订单
+            var order = await CreateOrderAsync(request);
+            
+            // 步骤2：处理支付
+            var payment = await ProcessPaymentAsync(order.PaymentInfo);
+            
+            // 步骤3：扣减库存
+            var inventory = await ReserveInventoryAsync(order.Items);
+            
+            // 步骤4：确认订单
+            await ConfirmOrderAsync(order.Id);
+            
+            return new OrderResult { Success = true, OrderId = order.Id };
+        }
+        catch (Exception ex)
+        {
+            // 补偿操作
+            await CompensateOrderAsync(sagaId, request);
+            throw;
+        }
+    }
+    
+    // 策略3：分布式锁
+    public async Task<bool> UpdateInventoryWithLockAsync(int productId, int quantity)
+    {
+        var lockKey = $"Inventory_Lock_{productId}";
+        
+        try
+        {
+            // 获取分布式锁
+            var lockAcquired = await _cache.LockAsync(lockKey, TimeSpan.FromSeconds(30));
+            
+            if (!lockAcquired)
+            {
+                return false; // 获取锁失败
+            }
+            
+            // 更新库存
+            var inventory = await GetInventoryAsync(productId);
+            if (inventory.Quantity >= quantity)
+            {
+                inventory.Quantity -= quantity;
+                await UpdateInventoryAsync(inventory);
+                return true;
+            }
+            
+            return false;
+        }
+        finally
+        {
+            // 释放锁
+            await _cache.UnlockAsync(lockKey);
+        }
+    }
+}
 ```
 
-**数据访问设计价值原理**：
-- **抽象封装**：将数据访问逻辑封装在Repository中，业务层只关注业务逻辑
-- **统一管理**：通过Unit of Work统一管理事务，确保数据一致性
-- **易于测试**：可以轻松Mock Repository接口，进行单元测试
-- **易于维护**：数据访问逻辑集中管理，修改和维护更加简单
+**💡 面试加分点**：提到"我会根据业务场景选择合适的一致性策略，使用事件溯源记录数据变更，实现Saga模式处理长事务，通过分布式锁保证关键操作的原子性"
 
 ---
 

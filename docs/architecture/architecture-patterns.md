@@ -236,35 +236,151 @@ public class ProductsQueriedEvent
 
 ---
 
-## 🔍 深度解析：架构选择核心原理
+## 🔍 深入面试问题
 
-> 🤔 **深度思考**：现在让我们回到小王的架构选择问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么不同的架构模式适合不同的项目场景吗？"
-> 
-> 这个问题考察的是你对架构模式本质的理解，而不仅仅是技术特点。
+### Q3: 如何评估一个架构模式的适用性？
 
-### 🎯 核心问题：架构模式如何影响项目成功？
+**面试官想了解什么**：你对架构评估和决策的深入理解。
 
-**架构选择不当的问题**：
+**🎯 标准答案**：
+
+**评估维度**：
+1. **技术维度**：团队技能、技术栈、学习成本
+2. **业务维度**：业务复杂度、扩展需求、性能要求
+3. **组织维度**：团队规模、开发周期、维护能力
+4. **成本维度**：开发成本、运维成本、技术债务
+
+**评估方法**：
+| 评估指标 | 评估方法 | 权重 | 评分标准 |
+|----------|----------|------|----------|
+| **技术匹配度** | 技能评估、POC验证 | 30% | 1-5分，5分最高 |
+| **业务适应性** | 需求分析、场景测试 | 25% | 1-5分，5分最高 |
+| **扩展性** | 压力测试、容量规划 | 20% | 1-5分，5分最高 |
+| **维护性** | 复杂度评估、运维成本 | 15% | 1-5分，5分最高 |
+| **成本效益** | ROI分析、TCO计算 | 10% | 1-5分，5分最高 |
+
+**💡 面试加分点**：提到"我会建立架构评估矩阵，使用加权评分法，结合POC验证和性能测试，确保架构选择的科学性和准确性"
+
+---
+
+### Q4: 微服务架构的拆分原则是什么？
+
+**面试官想了解什么**：你对微服务设计的深入理解。
+
+**🎯 标准答案**：
+
+**拆分原则**：
+1. **单一职责**：每个服务只负责一个业务能力
+2. **高内聚低耦合**：服务内部功能紧密相关，服务间依赖最小
+3. **业务边界**：按业务领域或业务流程拆分
+4. **团队边界**：考虑团队的组织结构和技能分布
+
+**拆分策略**：
+| 拆分策略 | 适用场景 | 优势 | 挑战 |
+|----------|----------|------|------|
+| **按业务领域** | 复杂业务系统 | 业务清晰、职责明确 | 服务间依赖复杂 |
+| **按业务流程** | 工作流系统 | 流程完整、易于理解 | 服务粒度可能过大 |
+| **按数据边界** | 数据密集型系统 | 数据一致性好 | 可能违反业务边界 |
+| **按团队结构** | 大型组织 | 团队自治、开发效率高 | 技术栈可能不统一 |
+
+**具体实现**：
+```csharp
+// 微服务拆分示例
+public class ServiceBoundaryAnalyzer
+{
+    public List<ServiceDefinition> AnalyzeServiceBoundaries(DomainModel domainModel)
+    {
+        var services = new List<ServiceDefinition>();
+        
+        // 按聚合根拆分
+        foreach (var aggregate in domainModel.Aggregates)
+        {
+            var service = new ServiceDefinition
+            {
+                Name = aggregate.Name + "Service",
+                Responsibilities = aggregate.Entities.Select(e => e.Name).ToList(),
+                Dependencies = AnalyzeDependencies(aggregate),
+                DataBoundary = aggregate.Entities.Select(e => e.DataAccess).ToList()
+            };
+            
+            services.Add(service);
+        }
+        
+        return services;
+    }
+}
 ```
-错误架构 → 开发困难 → 性能问题 → 维护复杂 → 项目失败
-    ↓         ↓         ↓         ↓         ↓
-  技术不匹配   开发效率   用户体验   运维成本   业务损失
+
+**💡 面试加分点**：提到"我会使用领域驱动设计的方法，识别聚合根和边界上下文，结合团队技能和业务复杂度，制定合理的服务拆分策略"
+
+---
+
+### Q5: 如何解决微服务架构中的数据一致性问题？
+
+**面试官想了解什么**：你对分布式系统设计的深入理解。
+
+**🎯 标准答案**：
+
+**数据一致性挑战**：
+- **网络分区**：服务间网络不可用
+- **时钟偏差**：不同服务的系统时间不同步
+- **并发冲突**：多个服务同时修改同一数据
+- **事务边界**：跨服务的事务难以保证原子性
+
+**解决方案**：
+| 解决方案 | 适用场景 | 一致性级别 | 性能影响 |
+|----------|----------|------------|----------|
+| **两阶段提交** | 强一致性要求 | 强一致性 | 高延迟、低吞吐 |
+| **Saga模式** | 长事务、业务流程 | 最终一致性 | 中等延迟、高吞吐 |
+| **事件溯源** | 审计要求、状态重建 | 最终一致性 | 低延迟、高吞吐 |
+| **CQRS** | 读写分离、性能优化 | 最终一致性 | 低延迟、高吞吐 |
+
+**具体实现**：
+```csharp
+// Saga模式实现示例
+public class OrderSaga : ISaga
+{
+    private readonly IOrderService _orderService;
+    private readonly IPaymentService _paymentService;
+    private readonly IInventoryService _inventoryService;
+    
+    public async Task<OrderResult> ExecuteOrder(OrderRequest request)
+    {
+        try
+        {
+            // 步骤1：创建订单
+            var order = await _orderService.CreateOrder(request);
+            
+            // 步骤2：处理支付
+            var payment = await _paymentService.ProcessPayment(order.PaymentInfo);
+            
+            // 步骤3：扣减库存
+            var inventory = await _inventoryService.ReserveInventory(order.Items);
+            
+            // 步骤4：确认订单
+            await _orderService.ConfirmOrder(order.Id);
+            
+            return new OrderResult { Success = true, OrderId = order.Id };
+        }
+        catch (Exception ex)
+        {
+            // 补偿操作
+            await CompensateOrder(request);
+            throw;
+        }
+    }
+    
+    private async Task CompensateOrder(OrderRequest request)
+    {
+        // 实现补偿逻辑
+        await _orderService.CancelOrder(request.OrderId);
+        await _paymentService.RefundPayment(request.PaymentInfo);
+        await _inventoryService.ReleaseInventory(request.Items);
+    }
+}
 ```
 
-**正确架构选择的解决方案**：
-```
-合适架构 → 开发高效 → 性能良好 → 维护简单 → 项目成功
-    ↓         ↓         ↓         ↓         ↓
-  技术匹配   开发速度   用户体验   运维成本   业务价值
-```
-
-**架构选择价值原理**：
-- **技术匹配**：选择与团队技能和项目需求匹配的架构
-- **成本效益**：在开发成本、维护成本和扩展成本之间找到平衡
-- **风险控制**：选择风险可控、易于理解和维护的架构
-- **未来扩展**：为业务发展和技术演进留出空间
+**💡 面试加分点**：提到"我会根据业务场景选择合适的一致性策略，使用Saga模式处理长事务，实现补偿机制确保数据最终一致性"
 
 ---
 
