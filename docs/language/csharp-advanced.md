@@ -444,7 +444,11 @@ private async void Button_Click(object sender, EventArgs e)
 - 减少死锁风险
 - 在库代码中推荐使用
 
-**💡 面试加分点**：提到"我会分析应用场景，在需要时使用ConfigureAwait(false)"
+**💡 面试加分点**：提到"我会分析应用场景，在需要时使用ConfigureAwait(false)：
+- **UI 应用**：在 WPF/WinForms 中，UI 线程需要 ConfigureAwait(true) 保持同步上下文
+- **Web 应用**：在 ASP.NET Core 中，通常使用 ConfigureAwait(false) 避免同步上下文开销
+- **库代码**：通用库应该使用 ConfigureAwait(false) 避免死锁和性能问题
+- **控制台应用**：可以使用 ConfigureAwait(false) 提升性能，因为不需要同步上下文"
 
 ### 实战经验展示
 
