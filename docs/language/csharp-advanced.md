@@ -356,7 +356,7 @@ public async void BadMethod() // 可能导致异常无法捕获
 
 ---
 
-## 📊 性能优化深度指南
+## 📊 性能优化指南
 
 ### 内存管理优化
 
@@ -431,7 +431,11 @@ private async void Button_Click(object sender, EventArgs e)
 - **Task.Run**：用于CPU密集型操作，利用线程池
 - **选择原则**：根据操作类型和性能要求选择
 
-**💡 面试加分点**：提到"我会使用性能分析工具测量不同方案的性能差异"
+**💡 面试加分点**：提到"我会使用性能分析工具测量不同方案的性能差异，比如：
+- **.NET 内置工具**：dotnet-trace、dotnet-counters、dotnet-dump
+- **性能分析器**：Visual Studio Profiler、JetBrains dotTrace、PerfView
+- **APM 工具**：Application Insights、New Relic、Datadog
+- **内存分析**：dotMemory、CLR Profiler、WinDbg"
 
 **Q2: ConfigureAwait(false)的作用是什么？**
 
