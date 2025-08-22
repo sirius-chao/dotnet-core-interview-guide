@@ -1,588 +1,821 @@
 # 架构模式面试指南 🚀
 
+> 💭 **面试场景**：面试官问："你能解释一下分层架构和微服务架构的区别吗？"
+> 
+> 🎯 **学习目标**：通过本章学习，你将能够：
+> - 深入理解各种架构模式的特点和适用场景
+> - 掌握架构选择的原则和决策方法
+> - 在面试中自信地回答相关问题
+> - 在实际项目中做出正确的架构决策
+> 
+> ⏱️ **预计学习时间**：45分钟
+> 
+> 🏆 **难度等级**：⭐⭐⭐⭐
+
 ## 📚 快速导航
 - [面试高频问题](#面试高频问题)
-- [架构模式哲学](#1-架构模式哲学深度解析)
-- [分层架构](#2-分层架构深度应用)
-- [微服务架构](#3-微服务架构深度应用)
-- [事件驱动架构](#4-事件驱动架构深度应用)
-- [面试重点](#5-面试重点深度解析)
+- [技术要点总结](#技术要点总结)
+- [实战应用指南](#实战应用指南)
+- [架构选择深度指南](#架构选择深度指南)
+- [面试重点总结](#面试重点总结)
+
+---
+
+## 🏆 故事化叙述：小王的架构选择困境
+
+> 💡 **真实案例**：小王是一名架构师，最近遇到了一个架构选择的难题...
+> 
+> 小王需要为一个新项目选择架构模式，面临以下挑战：
+> - 项目初期需求不明确，业务逻辑复杂
+> - 团队规模较小，技术能力有限
+> - 需要快速上线，但又要考虑未来扩展
+> - 预算有限，希望选择性价比最高的方案
+> - 需要与现有系统集成，技术栈要兼容
+> 
+> 🎯 **技术挑战**：如何在项目初期做出正确的架构选择，既满足当前需求，又为未来发展留出空间？
+> 
+> 通过本章的学习，你将和小王一起解决这个问题，掌握架构模式选择的核心技术！
+
+---
 
 ## ❓ 面试高频问题
 
-### Q1: 如何选择合适的分层架构？
+### Q1: 分层架构和微服务架构如何选择？
 
-**面试官想了解什么**：你的架构设计能力和决策思维。
+**面试官想了解什么**：你对不同架构模式的理解，以及架构选择的能力。
 
 **🎯 标准答案**：
 
-**分层架构选择考虑因素**：
-1. **业务复杂度**：简单业务用三层架构，复杂业务用多层架构
-2. **团队规模**：小团队用简单分层，大团队用详细分层
-3. **技术栈**：根据技术栈特点选择合适的分层
-4. **性能要求**：高性能要求需要优化分层设计
+| 架构模式 | 优势 | 劣势 | 适用场景 | 推荐指数 |
+|----------|------|------|----------|----------|
+| **分层架构** | 简单易懂、开发快速、成本低 | 扩展性差、技术栈固化 | 小型项目、MVP、团队技能有限 | ⭐⭐⭐⭐ |
+| **微服务架构** | 高扩展性、技术栈灵活、团队自治 | 复杂度高、运维复杂、成本高 | 大型项目、高并发、团队规模大 | ⭐⭐⭐⭐⭐ |
+| **事件驱动架构** | 松耦合、高扩展性、异步处理 | 调试困难、事务复杂、学习成本高 | 复杂业务流程、实时处理 | ⭐⭐⭐⭐ |
+| **CQRS架构** | 读写分离、性能优化、扩展性好 | 复杂度高、数据一致性、学习成本高 | 读写比例失衡、性能要求高 | ⭐⭐⭐ |
 
-**具体实现**：
+**💡 面试加分点**：提到"我会根据项目规模、团队能力、业务复杂度和扩展需求选择最适合的架构模式"
+
+**代码实现**：
+```csharp
+// 分层架构示例 - 传统三层架构
+public class ProductController : ControllerBase
+{
+    private readonly IProductService _productService;
+    private readonly ILogger<ProductController> _logger;
+    
+    public ProductController(IProductService productService, ILogger<ProductController> logger)
+    {
+        _productService = productService;
+        _logger = logger;
+    }
+    
+    [HttpGet]
+    public async Task<ActionResult<List<ProductDto>>> GetProducts()
+    {
+        try
+        {
+            var products = await _productService.GetProductsAsync();
+            return Ok(products);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get products");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+}
+
+// 业务逻辑层
+public class ProductService : IProductService
+{
+    private readonly IProductRepository _productRepository;
+    private readonly ICategoryRepository _categoryRepository;
+    
+    public ProductService(IProductRepository productRepository, ICategoryRepository categoryRepository)
+    {
+        _productRepository = productRepository;
+        _categoryRepository = categoryRepository;
+    }
+    
+    public async Task<List<ProductDto>> GetProductsAsync()
+    {
+        var products = await _productRepository.GetAllAsync();
+        var categories = await _categoryRepository.GetAllAsync();
+        
+        return products.Select(p => new ProductDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Price = p.Price,
+            CategoryName = categories.FirstOrDefault(c => c.Id == p.CategoryId)?.Name
+        }).ToList();
+    }
+}
+
+// 数据访问层
+public class ProductRepository : IProductRepository
+{
+    private readonly ApplicationDbContext _context;
+    
+    public ProductRepository(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+    
+    public async Task<List<Product>> GetAllAsync()
+    {
+        return await _context.Products
+            .Include(p => p.Category)
+            .ToListAsync();
+    }
+}
+
+// 微服务架构示例 - 产品服务
+[ApiController]
+[Route("api/[controller]")]
+public class ProductController : ControllerBase
+{
+    private readonly IProductService _productService;
+    private readonly ILogger<ProductController> _logger;
+    
+    public ProductController(IProductService productService, ILogger<ProductController> logger)
+    {
+        _productService = productService;
+        _logger = logger;
+    }
+    
+    [HttpGet]
+    public async Task<ActionResult<List<ProductDto>>> GetProducts()
+    {
+        try
+        {
+            var products = await _productService.GetProductsAsync();
+            return Ok(products);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get products");
+            return StatusCode(500, new ErrorResponse
+            {
+                Error = "Internal server error",
+                Message = "Product service is temporarily unavailable"
+            });
+        }
+    }
+}
+
+// 微服务中的产品服务
+public class ProductService : IProductService
+{
+    private readonly IProductRepository _productRepository;
+    private readonly IEventBus _eventBus;
+    private readonly ILogger<ProductService> _logger;
+    
+    public ProductService(
+        IProductRepository productRepository,
+        IEventBus eventBus,
+        ILogger<ProductService> logger)
+    {
+        _productRepository = productRepository;
+        _eventBus = eventBus;
+        _logger = logger;
+    }
+    
+    public async Task<List<ProductDto>> GetProductsAsync()
+    {
+        var products = await _productRepository.GetAllAsync();
+        
+        // 发布产品查询事件
+        await _eventBus.PublishAsync(new ProductsQueriedEvent
+        {
+            Count = products.Count,
+            Timestamp = DateTime.UtcNow
+        });
+        
+        return products.Select(p => new ProductDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Price = p.Price,
+            CategoryId = p.CategoryId // 微服务中只返回ID，不包含完整对象
+        }).ToList();
+    }
+}
+
+// 事件总线接口
+public interface IEventBus
+{
+    Task PublishAsync<T>(T @event) where T : class;
+    Task SubscribeAsync<T>(Func<T, Task> handler) where T : class;
+}
+
+// 事件定义
+public class ProductsQueriedEvent
+{
+    public int Count { get; set; }
+    public DateTime Timestamp { get; set; }
+}
 ```
-传统三层架构：
-┌─────────────────┐
-│    表现层       │ ← 用户界面、API接口
-├─────────────────┤
-│    业务层       │ ← 业务逻辑、服务
-├─────────────────┤
-│    数据层       │ ← 数据访问、存储
-└─────────────────┘
 
-现代多层架构：
-┌─────────────────┐
-│    表现层       │ ← MVC、API、Blazor
-├─────────────────┤
-│    应用层       │ ← 应用服务、用例
-├─────────────────┤
-│    领域层       │ ← 领域模型、业务规则
-├─────────────────┤
-│    基础设施层   │ ← 数据、外部服务
-└─────────────────┘
+---
+
+### Q2: 如何设计高可用的分布式系统？
+
+**面试官想了解什么**：你对分布式系统设计的理解，以及解决复杂架构问题的能力。
+
+**🎯 标准答案**：
+- **高可用设计**：冗余部署、负载均衡、故障转移、健康检查
+- **一致性保证**：CAP定理、最终一致性、分布式事务、数据同步
+- **容错机制**：熔断器、重试机制、降级策略、监控告警
+
+**💡 面试加分点**：提到"我会使用分布式系统的设计模式，如Circuit Breaker、Bulkhead等，确保系统的稳定性和可靠性"
+
+---
+
+## 🔍 问题驱动式：深入理解架构选择
+
+> 🤔 **深度思考**：现在让我们回到小王的架构选择问题...
+> 
+> 面试官可能会问："你能详细解释一下，为什么不同的架构模式适合不同的项目场景吗？"
+> 
+> 这个问题考察的是你对架构模式本质的理解，而不仅仅是技术特点。
+
+### 🎯 核心问题：架构模式如何影响项目成功？
+
+**架构选择不当的问题**：
+```
+错误架构 → 开发困难 → 性能问题 → 维护复杂 → 项目失败
+    ↓         ↓         ↓         ↓         ↓
+  技术不匹配   开发效率   用户体验   运维成本   业务损失
 ```
 
-**💡 面试加分点**：提到"我会使用依赖倒置原则，让高层模块不依赖低层模块"
+**正确架构选择的解决方案**：
+```
+合适架构 → 开发高效 → 性能良好 → 维护简单 → 项目成功
+    ↓         ↓         ↓         ↓         ↓
+  技术匹配   开发速度   用户体验   运维成本   业务价值
+```
+
+**架构选择价值原理**：
+- **技术匹配**：选择与团队技能和项目需求匹配的架构
+- **成本效益**：在开发成本、维护成本和扩展成本之间找到平衡
+- **风险控制**：选择风险可控、易于理解和维护的架构
+- **未来扩展**：为业务发展和技术演进留出空间
 
 ---
 
-### Q2: 微服务架构的优缺点是什么？什么场景下使用？
+## 🚀 技术要点总结
 
-**面试官想了解什么**：你对微服务架构的理解深度。
+### 架构模式选择指南
 
-**🎯 标准答案**：
+**架构模式分类与特点**：
+| 架构类型 | 主要特点 | 适用场景 | 优势 | 挑战 | 推荐指数 |
+|----------|----------|----------|------|------|----------|
+| **分层架构** | 垂直分层、职责清晰 | 小型项目、传统企业 | 简单易懂、开发快速 | 扩展性差、技术栈固化 | ⭐⭐⭐⭐ |
+| **微服务架构** | 服务拆分、独立部署 | 大型项目、高并发 | 高扩展性、技术栈灵活 | 复杂度高、运维复杂 | ⭐⭐⭐⭐⭐ |
+| **事件驱动架构** | 事件发布、异步处理 | 复杂业务流程 | 松耦合、高扩展性 | 调试困难、事务复杂 | ⭐⭐⭐⭐ |
+| **CQRS架构** | 读写分离、性能优化 | 读写比例失衡 | 性能优化、扩展性好 | 复杂度高、数据一致性 | ⭐⭐⭐ |
+| **领域驱动设计** | 业务建模、领域模型 | 复杂业务逻辑 | 业务清晰、维护性好 | 学习成本高、抽象复杂 | ⭐⭐⭐⭐ |
 
-**微服务架构优势**：
-1. **独立部署**：服务可以独立部署和扩展
-2. **技术多样性**：不同服务可以使用不同技术栈
-3. **故障隔离**：单个服务故障不影响整体系统
-4. **团队自治**：团队可以独立开发和维护服务
+**架构选择决策树**：
+```csharp
+// 架构选择服务
+public class ArchitectureSelectionService
+{
+    public ArchitectureType SelectArchitecture(ProjectRequirements requirements)
+    {
+        // 根据项目规模选择
+        if (requirements.TeamSize < 5 && requirements.Complexity == Complexity.Low)
+        {
+            return ArchitectureType.Layered; // 分层架构
+        }
+        
+        // 根据扩展需求选择
+        if (requirements.ExpectedConcurrency > 10000)
+        {
+            return ArchitectureType.Microservices; // 微服务架构
+        }
+        
+        // 根据业务复杂度选择
+        if (requirements.BusinessComplexity == BusinessComplexity.High)
+        {
+            return ArchitectureType.EventDriven; // 事件驱动架构
+        }
+        
+        // 根据性能要求选择
+        if (requirements.ReadWriteRatio > 10)
+        {
+            return ArchitectureType.CQRS; // CQRS架构
+        }
+        
+        // 根据团队技能选择
+        if (requirements.TeamSkills.Contains(Skill.DomainDriven))
+        {
+            return ArchitectureType.DDD; // 领域驱动设计
+        }
+        
+        return ArchitectureType.Layered; // 默认分层架构
+    }
+}
 
-**微服务架构劣势**：
-1. **复杂度增加**：分布式系统的复杂性
-2. **网络开销**：服务间通信的网络开销
-3. **数据一致性**：分布式数据一致性问题
-4. **运维复杂度**：需要更复杂的运维体系
+public enum ArchitectureType
+{
+    Layered,        // 分层架构
+    Microservices,  // 微服务架构
+    EventDriven,    // 事件驱动架构
+    CQRS,          // CQRS架构
+    DDD            // 领域驱动设计
+}
 
-**适用场景**：
-| 场景 | 推荐程度 | 原因 | 注意事项 |
-|------|----------|------|----------|
-| **大型团队** | ⭐⭐⭐⭐⭐ | 团队自治、并行开发 | 需要良好的治理 |
-| **高并发系统** | ⭐⭐⭐⭐⭐ | 独立扩展、故障隔离 | 需要负载均衡 |
-| **复杂业务** | ⭐⭐⭐⭐ | 业务边界清晰、解耦 | 需要服务治理 |
-| **小型团队** | ⭐⭐ | 复杂度高、学习成本 | 建议从单体开始 |
+public enum Complexity
+{
+    Low,    // 低复杂度
+    Medium, // 中等复杂度
+    High    // 高复杂度
+}
 
-**💡 面试加分点**：提到"我会使用领域驱动设计来指导服务拆分，确保服务边界清晰"
+public enum BusinessComplexity
+{
+    Low,    // 简单业务
+    Medium, // 中等业务
+    High    // 复杂业务
+}
+```
 
 ---
 
-### Q3: 如何设计高可用的分布式系统？
-
-**面试官想了解什么**：你的系统设计能力和架构思维。
-
-**🎯 标准答案**：
-
-**高可用设计原则**：
-1. **冗余设计**：多副本、多机房、多区域部署
-2. **故障隔离**：服务隔离、数据隔离、网络隔离
-3. **自动恢复**：健康检查、自动重启、故障转移
-4. **降级策略**：功能降级、性能降级、服务降级
-
-**具体实现**：
-- **负载均衡**：使用Nginx、HAProxy、Azure Load Balancer
-- **服务发现**：使用Consul、Eureka、Kubernetes Service
-- **配置中心**：使用Apollo、Nacos、Azure App Configuration
-- **监控告警**：使用Prometheus、Grafana、Azure Monitor
-
-**💡 面试加分点**：提到"我会使用混沌工程来测试系统的容错能力，使用熔断器模式处理服务故障"
-
----
-
-## 🏗️ 实战场景分析
+## 🔧 实战应用指南
 
 ### 场景1：电商平台架构设计
 
-**业务需求**：设计支持1000万+用户的电商平台架构
+**业务需求**：构建支持百万用户的电商平台，要求高可用、高扩展、高性能
 
 **🎯 技术方案**：
-
 ```
-用户访问 → CDN → 负载均衡 → 应用集群 → 缓存层 → 数据库集群
-   ↓         ↓       ↓          ↓          ↓          ↓
-  静态资源   缓存加速   请求分发    业务处理    数据缓存    数据存储
+用户请求 → CDN → 负载均衡 → API网关 → 微服务集群 → 数据存储
+    ↓       ↓       ↓         ↓         ↓         ↓
+  静态资源   缓存加速   请求分发   路由转发   业务处理   数据持久化
 ```
 
 **核心实现**：
-1. **前端架构**：SPA + PWA，支持离线使用
-2. **后端架构**：微服务架构，服务独立部署
-3. **数据架构**：读写分离、分库分表、缓存策略
-4. **部署架构**：容器化部署、自动扩缩容
+1. **前端架构**：React + TypeScript，实现组件化和状态管理
+2. **API网关**：统一入口、认证授权、限流控制、路由转发
+3. **微服务架构**：按业务领域拆分服务，支持独立部署和扩展
+4. **数据架构**：读写分离、分库分表、缓存策略、消息队列
 
-**🔑 关键决策**：使用事件驱动架构处理订单流程，使用分布式锁保证库存一致性
+**代码实现**：
+```csharp
+// API网关实现
+[ApiController]
+[Route("api/[controller]")]
+public class GatewayController : ControllerBase
+{
+    private readonly IProductService _productService;
+    private readonly IOrderService _orderService;
+    private readonly IUserService _userService;
+    private readonly ILogger<GatewayController> _logger;
+    
+    public GatewayController(
+        IProductService productService,
+        IOrderService orderService,
+        IUserService userService,
+        ILogger<GatewayController> logger)
+    {
+        _productService = productService;
+        _orderService = orderService;
+        _userService = userService;
+        _logger = logger;
+    }
+    
+    // 产品相关API
+    [HttpGet("products")]
+    public async Task<ActionResult<List<ProductDto>>> GetProducts()
+    {
+        try
+        {
+            var products = await _productService.GetProductsAsync();
+            return Ok(products);
+        }
+        catch (ServiceUnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Product service unavailable");
+            return StatusCode(503, new ErrorResponse
+            {
+                Error = "Service unavailable",
+                Message = "Product service is temporarily unavailable"
+            });
+        }
+    }
+    
+    // 订单相关API
+    [HttpGet("orders")]
+    public async Task<ActionResult<List<OrderDto>>> GetOrders()
+    {
+        try
+        {
+            var orders = await _orderService.GetOrdersAsync();
+            return Ok(orders);
+        }
+        catch (ServiceUnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Order service unavailable");
+            return StatusCode(503, new ErrorResponse
+            {
+                Error = "Service unavailable",
+                Message = "Order service is temporarily unavailable"
+            });
+        }
+    }
+    
+    // 用户相关API
+    [HttpGet("users")]
+    public async Task<ActionResult<List<UserDto>>> GetUsers()
+    {
+        try
+        {
+            var users = await _userService.GetUsersAsync();
+            return Ok(users);
+        }
+        catch (ServiceUnavailableException ex)
+        {
+            _logger.LogWarning(ex, "User service unavailable");
+            return StatusCode(503, new ErrorResponse
+            {
+                Error = "Service unavailable",
+                Message = "User service is temporarily unavailable"
+            });
+        }
+    }
+}
 
----
+// 微服务健康检查
+public class HealthCheckService : IHealthCheck
+{
+    private readonly IProductService _productService;
+    private readonly IOrderService _orderService;
+    private readonly IUserService _userService;
+    
+    public HealthCheckService(
+        IProductService productService,
+        IOrderService orderService,
+        IUserService userService)
+    {
+        _productService = productService;
+        _orderService = orderService;
+        _userService = userService;
+    }
+    
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var healthChecks = new List<(string Service, bool IsHealthy)>();
+        
+        try
+        {
+            // 检查产品服务
+            await _productService.GetProductsAsync();
+            healthChecks.Add(("Product Service", true));
+        }
+        catch
+        {
+            healthChecks.Add(("Product Service", false));
+        }
+        
+        try
+        {
+            // 检查订单服务
+            await _orderService.GetOrdersAsync();
+            healthChecks.Add(("Order Service", true));
+        }
+        catch
+        {
+            healthChecks.Add(("Order Service", false));
+        }
+        
+        try
+        {
+            // 检查用户服务
+            await _userService.GetUsersAsync();
+            healthChecks.Add(("User Service", true));
+        }
+        catch
+        {
+            healthChecks.Add(("User Service", false));
+        }
+        
+        var unhealthyServices = healthChecks.Where(h => !h.IsHealthy).ToList();
+        
+        if (unhealthyServices.Any())
+        {
+            return HealthCheckResult.Unhealthy(
+                "Some services are unhealthy",
+                data: new Dictionary<string, object>
+                {
+                    ["UnhealthyServices"] = unhealthyServices.Select(h => h.Service).ToList()
+                });
+        }
+        
+        return HealthCheckResult.Healthy("All services are healthy");
+    }
+}
+```
 
-### 场景2：企业级管理后台架构
+### 场景2：企业管理系统架构设计
 
-**业务需求**：设计支持1000+员工的企业级系统架构
+**业务需求**：构建企业内部管理系统，要求稳定可靠、易于维护、支持扩展
 
 **🎯 技术方案**：
-
 ```
-员工登录 → 身份认证 → 权限验证 → 组件渲染 → 数据服务 → 响应返回
-   ↓         ↓          ↓          ↓          ↓          ↓
-   统一认证    SSO集成    角色权限    动态组件    业务逻辑    响应式UI
+用户请求 → 负载均衡 → 应用服务器 → 业务逻辑 → 数据访问 → 数据库
+    ↓         ↓         ↓         ↓         ↓         ↓
+  请求接收   请求分发   请求处理   业务处理   数据查询   数据存储
 ```
 
 **核心实现**：
-1. **前端架构**：Blazor Server + 组件库
-2. **后端架构**：分层架构 + 微服务
-3. **权限控制**：基于角色的访问控制（RBAC）
-4. **实时通知**：SignalR实现实时消息推送
+1. **分层架构**：表现层、业务逻辑层、数据访问层，职责清晰
+2. **模块化设计**：按业务模块划分，支持独立开发和维护
+3. **数据访问**：Repository模式、Unit of Work模式、事务管理
+4. **缓存策略**：多级缓存、缓存更新、缓存失效
 
 ---
 
-## 📊 架构模式对比图表
+## 📊 视觉化增强：架构模式对比分析
 
-### 架构模式对比
+### 架构模式对比表
+
+| 对比维度 | 分层架构 | 微服务架构 | 事件驱动架构 | CQRS架构 |
+|----------|----------|------------|--------------|----------|
+| **开发复杂度** | 低 | 高 | 中等 | 高 |
+| **部署复杂度** | 低 | 高 | 中等 | 中等 |
+| **扩展性** | 低 | 高 | 高 | 高 |
+| **维护成本** | 低 | 高 | 中等 | 高 |
+| **团队协作** | 简单 | 复杂 | 中等 | 复杂 |
+| **技术栈灵活性** | 低 | 高 | 中等 | 中等 |
+
+### 架构选择决策流程图
 
 ```
-架构模式对比：
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   单体架构      │    │   微服务架构    │    │   事件驱动架构  │
-│                │    │                │    │                │
-│ 简单部署       │    │ 独立扩展        │    │ 松耦合         │
-│ 开发效率高     │    │ 故障隔离        │    │ 高扩展性       │
-│ 扩展性差       │    │ 复杂度高        │    │ 最终一致性     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+项目需求分析
+    ↓
+团队能力评估
+    ↓
+技术栈选择
+    ↓
+架构模式选择
+    ↓
+详细设计
+    ↓
+实施和优化
 ```
 
-### 分层架构对比
+### 架构演进路径图
 
-| 架构类型 | 优势 | 劣势 | 适用场景 | 推荐指数 |
-|----------|------|------|----------|----------|
-| **三层架构** | 简单、清晰 | 扩展性限制 | 小型项目 | ⭐⭐⭐⭐ |
-| **多层架构** | 职责清晰、可扩展 | 复杂度增加 | 中型项目 | ⭐⭐⭐⭐⭐ |
-| **CQRS架构** | 读写分离、高性能 | 复杂度高 | 高并发项目 | ⭐⭐⭐⭐ |
-| **事件驱动** | 松耦合、高扩展 | 调试困难 | 复杂业务流程 | ⭐⭐⭐⭐ |
+```
+单体架构
+    ↓
+分层架构
+    ↓
+模块化架构
+    ↓
+微服务架构
+    ↓
+云原生架构
+```
 
 ---
 
-## 1. 架构模式哲学深度解析
-
-### 1.1 架构模式的本质思考
-
-**架构模式的核心价值**
-架构模式不仅仅是技术选型，更是一种系统设计的哲学思考：
-
-**架构模式的认知层次**：
-1. **技术层面**：具体的技术实现和工具选择
-   - **技术栈选择**：选择合适的技术栈
-   - **工具集成**：集成各种开发工具
-   - **框架应用**：应用各种框架
-   - **性能优化**：优化系统性能
-
-2. **设计层面**：解决设计问题的通用方案
-   - **问题抽象**：抽象常见的设计问题
-   - **解决方案**：提供通用的解决方案
-   - **权衡考虑**：分析各种权衡因素
-   - **适用场景**：明确适用场景
-
-3. **思维层面**：培养良好的架构思维
-   - **系统思维**：培养系统思维能力
-   - **抽象思维**：培养抽象思维能力
-   - **权衡思维**：培养权衡决策能力
-   - **演进思维**：培养演进设计能力
-
-**架构模式的认知模型**：
-- **问题识别**：
-  - **问题特征**：识别问题的特征
-  - **问题分类**：对问题进行分类
-  - **问题复杂度**：评估问题复杂度
-  - **问题边界**：明确问题边界
-
-- **解决方案选择**：
-  1. **模式匹配**：匹配合适的架构模式
-  2. **方案评估**：评估解决方案的适用性
-  3. **权衡分析**：分析各种权衡因素
-  4. **决策制定**：制定最终决策
-
-### 1.2 架构模式分类深度理解
-
-**架构模式分类的哲学思考**
-分类不仅仅是组织，更是理解架构模式本质的方式：
-
-**分层架构模式深度解析**：
-- **关注点分离**：
-  - **业务关注点**：专注于业务逻辑
-  - **技术关注点**：专注于技术实现
-  - **数据关注点**：专注于数据管理
-  - **安全关注点**：专注于安全防护
-
-- **依赖关系管理**：
-  1. **单向依赖**：保持单向依赖关系
-  2. **依赖倒置**：依赖抽象而不是具体实现
-  3. **接口隔离**：定义小而精确的接口
-  4. **依赖注入**：通过依赖注入管理依赖
-
-**微服务架构模式深度解析**：
-- **服务拆分策略**：
-  - **业务边界**：基于业务边界拆分服务
-  - **技术边界**：基于技术边界拆分服务
-  - **团队边界**：基于团队边界拆分服务
-  - **性能边界**：基于性能边界拆分服务
-
-- **服务治理策略**：
-  - **服务发现**：实现服务发现机制
-  - **服务注册**：实现服务注册机制
-  - **负载均衡**：实现负载均衡机制
-  - **服务监控**：实现服务监控机制
-
-## 2. 分层架构深度应用
-
-### 2.1 分层架构设计哲学
-
-**分层架构的本质思考**
-分层架构不仅仅是代码组织，更是一种关注点分离的思维方式：
-
-**分层的深层含义**：
-- **关注点分离**：
-  - **业务逻辑**：专注于业务逻辑的实现
-  - **技术实现**：专注于技术实现的细节
-  - **数据管理**：专注于数据的管理和访问
-  - **用户界面**：专注于用户界面的展示
-
-- **职责单一**：
-  1. **单一职责**：每个层次只负责一个职责
-  2. **职责明确**：每个层次的职责明确
-  3. **职责独立**：每个层次的职责相对独立
-  4. **职责协作**：各个层次通过协作完成功能
-
-**分层架构的实现策略**：
-- **层次定义策略**：
-  - **表现层**：定义表现层的职责和接口
-  - **业务层**：定义业务层的职责和接口
-  - **数据层**：定义数据层的职责和接口
-  - **基础设施层**：定义基础设施层的职责和接口
-
-- **依赖管理策略**：
-  - **依赖方向**：控制依赖的方向
-  - **依赖注入**：使用依赖注入管理依赖
-  - **接口隔离**：定义精确的接口
-  - **依赖倒置**：依赖抽象而不是具体实现
-
-### 2.2 分层架构优化策略
-
-**分层架构的性能优化**：
-- **层次间通信优化**：
-  - **异步通信**：使用异步通信减少阻塞
-  - **批量处理**：使用批量处理减少调用次数
-  - **缓存策略**：实现有效的缓存策略
-  - **连接池**：使用连接池优化资源使用
-
-- **层次内优化**：
-  - **算法优化**：优化算法实现
-  - **数据结构优化**：选择合适的数据结构
-  - **内存管理**：优化内存使用
-  - **并发控制**：优化并发控制策略
-
-**分层架构的可维护性优化**：
-- **代码组织优化**：
-  - **模块化设计**：实现模块化设计
-  - **接口设计**：设计清晰的接口
-  - **文档完善**：完善技术文档
-  - **代码规范**：制定代码规范
-
-- **测试策略优化**：
-  1. **单元测试**：实现单元测试
-  2. **集成测试**：实现集成测试
-  3. **端到端测试**：实现端到端测试
-  4. **性能测试**：实现性能测试
-
-## 3. 微服务架构深度应用
-
-### 3.1 微服务架构设计哲学
-
-**微服务架构的本质思考**
-微服务架构不仅仅是服务拆分，更是一种系统演进的思维方式：
-
-**微服务的深层含义**：
-- **服务自治**：
-  - **独立部署**：每个服务可以独立部署
-  - **独立开发**：每个服务可以独立开发
-  - **独立测试**：每个服务可以独立测试
-  - **独立运维**：每个服务可以独立运维
-
-- **服务协作**：
-  - **服务通信**：服务间的通信机制
-  - **服务发现**：服务的发现机制
-  - **服务治理**：服务的治理机制
-  - **服务监控**：服务的监控机制
-
-**微服务架构的实现策略**：
-- **服务拆分策略**：
-  - **业务驱动**：基于业务驱动拆分服务
-  - **数据驱动**：基于数据驱动拆分服务
-  - **团队驱动**：基于团队驱动拆分服务
-  - **技术驱动**：基于技术驱动拆分服务
-
-- **服务设计策略**：
-  - **API 设计**：设计清晰的 API 接口
-  - **数据设计**：设计合适的数据模型
-  - **安全设计**：设计安全防护机制
-  - **性能设计**：设计性能优化机制
-
-### 3.2 微服务架构治理策略
-
-**微服务架构的服务治理**：
-- **服务发现与注册**：
-  - **服务注册**：实现服务注册机制
-  - **服务发现**：实现服务发现机制
-  - **健康检查**：实现健康检查机制
-  - **负载均衡**：实现负载均衡机制
-
-- **服务监控与告警**：
-  1. **性能监控**：监控服务性能指标
-  2. **健康监控**：监控服务健康状态
-  3. **异常监控**：监控服务异常情况
-  4. **告警机制**：实现告警机制
-
-**微服务架构的数据治理**：
-- **数据一致性策略**：
-  - **强一致性**：实现强一致性保证
-  - **最终一致性**：实现最终一致性保证
-  - **因果一致性**：实现因果一致性保证
-  - **会话一致性**：实现会话一致性保证
-
-- **数据同步策略**：
-  - **同步复制**：实现同步数据复制
-  - **异步复制**：实现异步数据复制
-  - **事件驱动**：实现事件驱动的数据同步
-  - **消息队列**：使用消息队列实现数据同步
-
-## 4. 事件驱动架构深度应用
-
-### 4.1 事件驱动架构设计哲学
-
-**事件驱动架构的本质思考**
-事件驱动架构不仅仅是异步处理，更是一种松耦合的思维方式：
-
-**事件驱动的深层含义**：
-- **松耦合设计**：
-  - **组件解耦**：解耦系统组件
-  - **接口解耦**：解耦接口依赖
-  - **时间解耦**：解耦时间依赖
-  - **空间解耦**：解耦空间依赖
-
-- **异步处理**：
-  - **非阻塞处理**：实现非阻塞处理
-  - **并发处理**：实现并发处理
-  - **批量处理**：实现批量处理
-  - **流式处理**：实现流式处理
-
-**事件驱动架构的实现策略**：
-- **事件设计策略**：
-  - **事件定义**：定义清晰的事件结构
-  - **事件分类**：对事件进行分类
-  - **事件版本**：管理事件版本
-  - **事件验证**：验证事件有效性
-
-- **事件处理策略**：
-  - **事件路由**：实现事件路由机制
-  - **事件过滤**：实现事件过滤机制
-  - **事件转换**：实现事件转换机制
-  - **事件聚合**：实现事件聚合机制
-
-### 4.2 事件驱动架构优化策略
-
-**事件驱动架构的性能优化**：
-- **事件处理优化**：
-  - **并行处理**：实现并行事件处理
-  - **批量处理**：实现批量事件处理
-  - **流式处理**：实现流式事件处理
-  - **缓存策略**：实现事件缓存策略
-
-- **事件存储优化**：
-  1. **存储策略**：选择合适的存储策略
-  2. **索引优化**：优化事件索引
-  3. **压缩策略**：实现事件压缩
-  4. **清理策略**：实现事件清理
-
-**事件驱动架构的可靠性优化**：
-- **事件可靠性保证**：
-  - **事件持久化**：实现事件持久化
-  - **事件重试**：实现事件重试机制
-  - **事件去重**：实现事件去重机制
-  - **事件顺序**：保证事件顺序
-
-- **故障处理策略**：
-  - **故障检测**：实现故障检测机制
-  - **故障恢复**：实现故障恢复机制
-  - **故障隔离**：实现故障隔离机制
-  - **故障告警**：实现故障告警机制
-
-## 5. CQRS 架构深度应用
-
-### 5.1 CQRS 架构设计哲学
-
-**CQRS 架构的本质思考**
-CQRS 不仅仅是读写分离，更是一种职责分离的思维方式：
-
-**CQRS 的深层含义**：
-- **职责分离**：
-  - **命令职责**：专注于命令处理
-  - **查询职责**：专注于查询处理
-  - **数据职责**：分离读写数据模型
-  - **性能职责**：优化读写性能
-
-- **数据模型分离**：
-  - **写模型**：设计写操作的数据模型
-  - **读模型**：设计读操作的数据模型
-  - **模型同步**：实现模型间的同步
-  - **模型优化**：优化各个模型
-
-**CQRS 架构的实现策略**：
-- **命令处理策略**：
-  - **命令验证**：实现命令验证机制
-  - **命令路由**：实现命令路由机制
-  - **命令处理**：实现命令处理机制
-  - **命令结果**：处理命令执行结果
-
-- **查询处理策略**：
-  - **查询优化**：优化查询性能
-  - **查询缓存**：实现查询缓存
-  - **查询分页**：实现查询分页
-  - **查询聚合**：实现查询聚合
-
-### 5.2 CQRS 架构优化策略
-
-**CQRS 架构的性能优化**：
-- **读写性能优化**：
-  - **写性能优化**：优化写操作性能
-  - **读性能优化**：优化读操作性能
-  - **缓存策略**：实现有效的缓存策略
-  - **索引优化**：优化数据索引
-
-- **数据同步优化**：
-  - **同步策略**：选择合适的同步策略
-  - **同步性能**：优化同步性能
-  - **同步一致性**：保证同步一致性
-  - **同步监控**：监控同步状态
-
-**CQRS 架构的复杂性管理**：
-- **复杂性控制**：
-  - **模型复杂度**：控制数据模型复杂度
-  - **同步复杂度**：控制同步机制复杂度
-  - **部署复杂度**：控制部署复杂度
-  - **运维复杂度**：控制运维复杂度
-
-- **最佳实践**：
-  1. **渐进采用**：渐进式采用 CQRS
-  2. **边界明确**：明确 CQRS 的边界
-  3. **工具支持**：使用合适的工具支持
-  4. **团队培训**：培训团队掌握 CQRS
-
-## 6. 面试重点深度解析
-
-### 6.1 高频技术问题
-
-**架构模式深度理解**
-- **模式选择**：如何选择合适的架构模式
-  - **需求分析**：分析功能需求、性能需求、可维护性需求
-  - **团队能力**：评估团队的技术能力和经验
-  - **技术栈**：考虑现有的技术栈和基础设施
-  - **业务复杂度**：根据业务复杂度选择合适的模式
-  - **演进规划**：考虑未来的演进需求
-
-- **模式组合**：如何组合多个架构模式
-  - **分层架构 + 微服务**：在微服务内部使用分层架构
-  - **事件驱动 + CQRS**：使用事件驱动实现读写分离
-  - **微服务 + 事件驱动**：微服务间通过事件通信
-  - **分层架构 + 事件驱动**：在分层架构中引入事件驱动
-  - **组合原则**：确保模式间不冲突，相互补充
-
-- **模式演进**：如何演进架构模式
-  - **渐进式演进**：逐步引入新的架构模式
-  - **兼容性保证**：确保演进过程中的向后兼容
-  - **风险控制**：控制演进过程中的风险
-  - **团队培训**：培训团队掌握新的架构模式
-  - **监控验证**：监控演进后的系统表现
-
-- **模式重构**：如何重构现有架构
-  - **重构分析**：分析现有架构的问题和改进点
-  - **重构计划**：制定详细的重构计划
-  - **增量重构**：采用增量式重构，降低风险
-  - **测试验证**：通过测试验证重构的正确性
-  - **性能验证**：验证重构后的性能表现
-
-**架构设计深度理解**
-- **系统设计**：如何设计复杂的系统架构
-  - **需求分解**：将复杂需求分解为可管理的模块
-  - **模块设计**：设计清晰的模块边界和接口
-  - **依赖管理**：管理模块间的依赖关系
-  - **接口设计**：设计稳定、清晰的接口
-  - **扩展性设计**：预留扩展点，支持未来演进
-
-- **模式应用**：如何在架构中应用设计模式
-  - **模式识别**：识别适合的设计模式
-  - **模式适配**：根据具体需求适配设计模式
-  - **模式组合**：组合多个设计模式解决复杂问题
-  - **模式演进**：根据使用情况演进设计模式
-  - **最佳实践**：遵循设计模式的最佳实践
-
-- **性能优化**：如何通过架构优化性能
-  - **缓存策略**：设计多级缓存策略
-  - **异步处理**：使用异步处理提高响应性
-  - **负载均衡**：实现负载均衡提高吞吐量
-  - **资源池化**：使用资源池减少资源创建开销
-  - **性能监控**：建立性能监控体系
-
-- **可维护性**：如何通过架构提高可维护性
-  - **模块化设计**：设计高内聚、低耦合的模块
-  - **接口稳定**：保持接口的稳定性
-  - **文档完善**：完善架构文档和设计文档
-  - **测试覆盖**：建立全面的测试覆盖
-  - **代码规范**：制定和执行代码规范
-
-### 6.2 架构设计问题
-
-**大型系统架构设计**
-- **模块化设计**：如何设计模块化的系统架构
-- **扩展性设计**：如何设计可扩展的系统架构
-- **性能设计**：如何设计高性能的系统架构
-- **安全设计**：如何设计安全的系统架构
-
-**架构模式选型决策**
-- **模式评估**：如何评估架构模式的适用性
-- **模式权衡**：如何在不同的架构模式间权衡
-- **模式演进**：如何演进现有的架构模式
-- **模式重构**：如何重构代码使用架构模式
-
-### 6.3 实战案例分析
-
-**电商系统架构设计案例**
-- **商品系统**：如何设计商品系统架构
-- **订单系统**：如何设计订单系统架构
-- **用户系统**：如何设计用户系统架构
-- **支付系统**：如何设计支付系统架构
-
-**企业级系统架构设计案例**
-- **权限管理**：如何设计权限管理系统架构
-- **工作流系统**：如何设计工作流系统架构
-- **报表系统**：如何设计报表系统架构
-- **消息系统**：如何设计消息系统架构
+## 📊 架构选择深度指南
+
+### 高可用设计策略
+
+**高可用技术**：
+| 技术类型 | 实现方式 | 可用性提升 | 适用场景 | 注意事项 |
+|----------|----------|-------------|----------|----------|
+| **负载均衡** | 硬件负载均衡、软件负载均衡 | 20-40% | 高并发、多实例 | 会话保持、健康检查 |
+| **故障转移** | 主备切换、自动故障检测 | 30-60% | 关键业务、高可用要求 | 数据同步、切换时间 |
+| **熔断器模式** | 服务降级、快速失败 | 40-70% | 依赖服务、故障隔离 | 熔断策略、恢复机制 |
+| **限流控制** | 令牌桶、漏桶算法 | 20-50% | 高并发、资源保护 | 限流策略、用户体验 |
+
+**具体实现示例**：
+```csharp
+// 熔断器模式实现
+public class CircuitBreaker<T>
+{
+    private readonly ILogger<CircuitBreaker<T>> _logger;
+    private readonly int _failureThreshold;
+    private readonly TimeSpan _resetTimeout;
+    
+    private CircuitBreakerState _state = CircuitBreakerState.Closed;
+    private int _failureCount = 0;
+    private DateTime _lastFailureTime;
+    
+    public CircuitBreaker(
+        ILogger<CircuitBreaker<T>> logger,
+        int failureThreshold = 3,
+        int resetTimeoutSeconds = 60)
+    {
+        _logger = logger;
+        _failureThreshold = failureThreshold;
+        _resetTimeout = TimeSpan.FromSeconds(resetTimeoutSeconds);
+    }
+    
+    public async Task<T> ExecuteAsync(Func<Task<T>> action)
+    {
+        if (_state == CircuitBreakerState.Open)
+        {
+            if (DateTime.UtcNow - _lastFailureTime > _resetTimeout)
+            {
+                _logger.LogInformation("Circuit breaker attempting to close");
+                _state = CircuitBreakerState.HalfOpen;
+            }
+            else
+            {
+                throw new CircuitBreakerOpenException("Circuit breaker is open");
+            }
+        }
+        
+        try
+        {
+            var result = await action();
+            
+            if (_state == CircuitBreakerState.HalfOpen)
+            {
+                _logger.LogInformation("Circuit breaker closed successfully");
+                _state = CircuitBreakerState.Closed;
+                _failureCount = 0;
+            }
+            
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _failureCount++;
+            _lastFailureTime = DateTime.UtcNow;
+            
+            if (_failureCount >= _failureThreshold)
+            {
+                _logger.LogWarning(ex, "Circuit breaker opened after {FailureCount} failures", _failureCount);
+                _state = CircuitBreakerState.Open;
+            }
+            
+            throw;
+        }
+    }
+}
+
+public enum CircuitBreakerState
+{
+    Closed,     // 正常状态
+    Open,       // 熔断状态
+    HalfOpen    // 半开状态
+}
+
+public class CircuitBreakerOpenException : Exception
+{
+    public CircuitBreakerOpenException(string message) : base(message) { }
+}
+
+// 使用熔断器
+public class ResilientProductService : IProductService
+{
+    private readonly IProductService _productService;
+    private readonly CircuitBreaker<List<ProductDto>> _circuitBreaker;
+    private readonly ILogger<ResilientProductService> _logger;
+    
+    public ResilientProductService(
+        IProductService productService,
+        ILogger<ResilientProductService> logger)
+    {
+        _productService = productService;
+        _logger = logger;
+        _circuitBreaker = new CircuitBreaker<List<ProductDto>>(logger);
+    }
+    
+    public async Task<List<ProductDto>> GetProductsAsync()
+    {
+        try
+        {
+            return await _circuitBreaker.ExecuteAsync(() => _productService.GetProductsAsync());
+        }
+        catch (CircuitBreakerOpenException)
+        {
+            _logger.LogWarning("Circuit breaker is open, returning cached data");
+            // 返回缓存数据或默认数据
+            return new List<ProductDto>();
+        }
+    }
+}
+```
+
+### 分布式事务处理
+
+**事务处理策略**：
+| 策略类型 | 实现方式 | 适用场景 | 优势 | 注意事项 |
+|----------|----------|----------|------|----------|
+| **两阶段提交** | 协调者模式、投票阶段 | 强一致性要求 | 强一致性、ACID保证 | 性能影响、阻塞问题 |
+| **Saga模式** | 长事务、补偿操作 | 长业务流程 | 性能好、松耦合 | 补偿逻辑复杂、最终一致性 |
+| **TCC模式** | Try-Confirm-Cancel | 短事务、高并发 | 性能好、资源预留 | 业务复杂度高、回滚复杂 |
+| **事件溯源** | 事件存储、状态重建 | 审计要求、状态追踪 | 完整历史、易于调试 | 存储空间、查询复杂 |
+
+---
+
+## 💝 情感化表达：为什么架构选择如此重要？
+
+> 🚀 **架构选择不仅仅是技术问题**
+> 
+> 想象一下，你的团队正在为一个重要项目选择架构，如果选择了错误的架构模式，
+> 可能会导致开发困难、性能问题、维护复杂，最终影响项目的成功和团队的信心！
+> 
+> 这就是为什么架构选择如此重要！它不仅仅是一个技术决策，
+> 更是项目成功、团队效率和业务价值的关键因素。
+> 
+> 💡 **技术价值**：掌握架构选择，你就能：
+> - 为项目选择最合适的架构模式，提高开发效率
+> - 在面试中展现架构设计能力，获得更好的机会
+> - 在实际项目中解决复杂问题，成为团队的技术骨干
+> - 跟上技术发展趋势，保持竞争力
+> 
+> 🎯 **业务价值**：好的架构选择能够：
+> - 提高开发效率，快速响应业务需求
+> - 降低维护成本，减少技术债务
+> - 支持业务快速扩展，抓住市场机会
+> - 建立技术优势，获得竞争优势
+> 
+> 🏆 **个人价值**：成为架构专家，你就能：
+> - 在团队中建立技术权威，获得更多机会
+> - 解决复杂的技术挑战，提升个人成就感
+> - 为业务创造价值，获得更好的职业发展
+> - 成为团队不可或缺的技术骨干
+
+---
+
+## 🎯 面试重点总结
+
+### 高频技术问题
+
+**Q1: 分层架构和微服务架构如何选择？**
+
+**🎯 标准答案**：
+- 分层架构适合小型项目、团队技能有限、快速开发
+- 微服务架构适合大型项目、高并发、团队规模大
+- 根据项目规模、团队能力、业务复杂度和扩展需求选择
+
+**💡 面试加分点**：提到"我会根据项目规模、团队能力、业务复杂度和扩展需求选择最适合的架构模式"
+
+**Q2: 如何设计高可用的分布式系统？**
+
+**🎯 标准答案**：
+- 使用负载均衡、故障转移、熔断器模式、限流控制
+- 实现健康检查、监控告警、自动恢复机制
+- 设计容错机制，确保系统在部分故障时仍能提供服务
+
+**💡 面试加分点**：提到"我会使用分布式系统的设计模式，如Circuit Breaker、Bulkhead等，确保系统的稳定性和可靠性"
+
+### 实战经验展示
+
+**项目案例**：电商平台架构设计
+
+**技术挑战**：需要构建支持百万用户的高可用、高扩展电商平台
+
+**解决方案**：
+1. 选择微服务架构，按业务领域拆分服务
+2. 实现API网关，统一入口和认证授权
+3. 使用负载均衡和故障转移，提高系统可用性
+4. 实现熔断器模式，防止级联故障
+5. 设计分布式事务，保证数据一致性
+
+**性能提升**：系统并发处理能力从1万提升到100万，可用性从99%提升到99.9%
+
+---
+
+## 🎉 总结：小王的成功之路
+
+> 🏆 **回到小王的故事**：通过正确的架构选择，小王成功解决了项目架构的难题！
+> 
+> - **开发效率**：选择了合适的架构，开发效率提升50%
+> - **系统性能**：架构设计合理，系统性能满足业务需求
+> - **维护成本**：架构清晰，维护成本降低30%
+> - **技术成长**：小王成为了团队的架构专家
+> 
+> 💡 **你的收获**：通过本章学习，你已经掌握了：
+> - 各种架构模式的特点和适用场景
+> - 架构选择的原则和决策方法
+> - 面试中常见问题的标准答案和加分点
+> - 实际项目中的架构设计和决策能力
+> 
+> 🚀 **下一步行动**：继续学习其他架构技术，或者在实际项目中应用这些知识！
+> 
+> 记住：**好的架构选择不是为了跟随潮流，而是为了解决问题，创造价值！**
+
+---
 
 ## 总结
 
-架构模式是软件架构设计的宝贵财富，要真正掌握架构模式，需要：
+架构模式选择是构建高质量系统的重要技术，要真正掌握架构选择，需要：
 
-1. **深入理解模式原理**：理解每个架构模式的核心原理和适用场景
-2. **掌握模式组合**：掌握如何组合多个架构模式解决复杂问题
-3. **培养架构思维**：培养良好的软件架构思维和设计思维
-4. **平衡各种因素**：在功能、性能、可维护性之间找到平衡
-5. **持续实践应用**：在实际项目中持续应用和改进架构模式
+1. **深入理解架构模式**：掌握各种架构模式的特点、优势和适用场景
+2. **掌握选择原则**：理解架构选择的原则、决策方法和评估标准
+3. **理解高可用设计**：掌握负载均衡、故障转移、熔断器等高可用技术
+4. **掌握分布式事务**：理解两阶段提交、Saga、TCC等事务处理策略
+5. **实战应用能力**：能够将理论知识应用到实际项目中
 
-只有深入理解这些原理，才能在面试中展现出真正的技术深度，也才能在项目中做出正确的架构设计决策。
+只有深入理解这些技术，才能在面试中展现出真正的技术深度，也才能在项目中构建出高质量、高可用的系统架构。
