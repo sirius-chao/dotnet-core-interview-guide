@@ -106,7 +106,7 @@ public class SecureUserService
     public User GetUserByUsername(string username)
     {
         // 安全：使用参数化查询，防止SQL注入
-        const string sql = "SELECT Id, Username, Email FROM Users WHERE Username = @Username";
+        var sql = "SELECT * FROM Users WHERE Username = @Username";
         
         using var connection = new SqlConnection(_connectionString);
         using var command = new SqlCommand(sql, connection);
@@ -131,7 +131,7 @@ public class SecureUserService
     }
 }
 
-// ✅ 更安全：使用Entity Framework
+// ✅ 更安全：使用EF Core
 public class SecureUserServiceEF
 {
     private readonly ApplicationDbContext _context;
@@ -143,976 +143,108 @@ public class SecureUserServiceEF
     
     public async Task<User> GetUserByUsernameAsync(string username)
     {
-        // Entity Framework自动使用参数化查询
+        // EF Core自动使用参数化查询，防止SQL注入
         return await _context.Users
-            .Where(u => u.Username == username)
-            .Select(u => new User
-            {
-                Id = u.Id,
-                Username = u.Username,
-                Email = u.Email
-            })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(u => u.Username == username);
     }
 }
 ```
 
 ---
 
-### Q2: 如何实现安全的身份认证和授权？
+### Q2: 如何防止XSS攻击？
 
-**面试官想了解什么**：你对身份认证机制的理解，以及安全实现的能力。
-
-**🎯 标准答案**：
-- 使用JWT令牌进行无状态认证
-- 实现基于角色的访问控制(RBAC)
-- 使用HTTPS保护数据传输
-- 实现多因素认证(MFA)
-- 定期轮换密钥和令牌
-
-**💡 面试加分点**：提到"我会实现JWT令牌的自动刷新机制，并监控异常登录行为"
-
----
-
-## 🔍 深入面试问题
-
-### Q3: 如何防止SQL注入攻击？
-
-**面试官想了解什么**：你对安全防护的深入理解。
+**面试官想了解什么**：你对前端安全的理解。
 
 **🎯 标准答案**：
 
-**SQL注入原理**：
-- **攻击方式**：通过恶意输入修改SQL语句结构
-- **危害程度**：可能导致数据泄露、数据篡改、系统被控制
-- **常见场景**：用户输入、URL参数、Cookie值
+**XSS攻击类型**：
+1. **存储型XSS**：恶意脚本存储在数据库中
+2. **反射型XSS**：恶意脚本通过URL参数反射到页面
+3. **DOM型XSS**：恶意脚本修改DOM结构
 
 **防护策略**：
-| 防护层级 | 技术方案 | 实现方式 | 防护效果 |
-|----------|----------|----------|----------|
-| **输入验证** | 白名单验证 | 正则表达式、类型检查 | 基础防护 |
-| **参数化查询** | 预编译语句 | 使用参数占位符 | 核心防护 |
-| **ORM框架** | Entity Framework | 使用LINQ查询 | 高级防护 |
-| **权限控制** | 最小权限 | 数据库用户权限限制 | 纵深防护 |
+- **输出编码**：使用Html.Encode()编码输出内容
+- **内容安全策略**：设置CSP头，限制脚本执行
+- **输入验证**：验证和过滤用户输入
+- **HttpOnly Cookie**：防止JavaScript访问敏感Cookie
 
 **具体实现**：
 ```csharp
-// 防止SQL注入的多种方法
-public class SqlInjectionProtection
+// ❌ 危险：直接输出用户输入
+public class DangerousController : Controller
 {
-    private readonly IDbContext _context;
-    private readonly ILogger<SqlInjectionProtection> _logger;
-    
-    // 方法1：使用参数化查询
-    public async Task<User> GetUserByIdAsync(int userId)
+    public IActionResult Index(string userInput)
     {
-        // 安全：使用参数化查询
-        var sql = "SELECT * FROM Users WHERE Id = @UserId";
-        var parameters = new { UserId = userId };
-        
-        return await _context.Database
-            .SqlQueryRaw<User>(sql, parameters)
-            .FirstOrDefaultAsync();
-    }
-    
-    // 方法2：使用Entity Framework
-    public async Task<User> GetUserByEmailAsync(string email)
-    {
-        // 安全：使用LINQ查询
-        return await _context.Users
-            .Where(u => u.Email == email)
-            .FirstOrDefaultAsync();
-    }
-    
-    // 方法3：输入验证
-    public async Task<bool> ValidateUserInputAsync(string input)
-    {
-        // 白名单验证
-        var allowedPattern = @"^[a-zA-Z0-9@._-]+$";
-        if (!Regex.IsMatch(input, allowedPattern))
-        {
-            _logger.LogWarning("Invalid input detected: {Input}", input);
-            return false;
-        }
-        
-        // 长度限制
-        if (input.Length > 100)
-        {
-            return false;
-        }
-        
-        // 特殊字符过滤
-        var dangerousChars = new[] { "'", "\"", ";", "--", "/*", "*/" };
-        if (dangerousChars.Any(c => input.Contains(c)))
-        {
-            _logger.LogWarning("Dangerous characters detected: {Input}", input);
-            return false;
-        }
-        
-        return true;
-    }
-    
-    // 方法4：使用存储过程
-    public async Task<User> GetUserByStoredProcedureAsync(int userId)
-    {
-        var result = await _context.Database
-            .SqlQueryRaw<User>("EXEC GetUserById @UserId", new { UserId = userId })
-            .FirstOrDefaultAsync();
-        
-        return result;
+        // 危险：直接输出用户输入，容易被XSS攻击
+        ViewBag.UserInput = userInput;
+        return View();
     }
 }
 
-// 安全的数据库访问基类
-public abstract class SecureRepository<T> where T : class
+// ✅ 安全：编码输出内容
+public class SecureController : Controller
 {
-    protected readonly IDbContext _context;
-    protected readonly ILogger _logger;
-    
-    protected SecureRepository(IDbContext context, ILogger logger)
+    public IActionResult Index(string userInput)
     {
-        _context = context;
-        _logger = logger;
+        // 安全：编码用户输入，防止XSS攻击
+        ViewBag.UserInput = Html.Encode(userInput);
+        return View();
     }
-    
-    // 安全的查询方法
-    protected async Task<T> SafeQueryAsync(Expression<Func<T, bool>> predicate)
-    {
-        try
-        {
-            return await _context.Set<T>().Where(predicate).FirstOrDefaultAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Database query failed");
-            throw new SecurityException("Database access denied");
-        }
-    }
-    
-    // 安全的更新方法
-    protected async Task<bool> SafeUpdateAsync(T entity)
-    {
-        try
-        {
-            _context.Set<T>().Update(entity);
-            return await _context.SaveChangesAsync() > 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Database update failed");
-            throw new SecurityException("Database update denied");
-        }
-    }
+}
+
+// ✅ 更安全：使用内容安全策略
+[HttpPost]
+public IActionResult SetCspHeader()
+{
+    Response.Headers.Add("Content-Security-Policy", 
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';");
+    return Ok();
 }
 ```
 
-**💡 面试加分点**：提到"我会使用多层防护策略，通过输入验证、参数化查询、ORM框架和权限控制，建立纵深防御体系，防止SQL注入攻击"
+**💡 面试加分点**：提到"我会使用多层防护策略，结合输出编码、CSP和输入验证"
 
 ---
 
-### Q4: 如何实现安全的身份认证系统？
+### Q3: 如何实现安全的身份认证？
 
-**面试官想了解什么**：你对身份认证的深入理解。
+**面试官想了解什么**：你对身份认证的理解。
 
 **🎯 标准答案**：
 
-**认证系统设计**：
-1. **多因素认证**：密码+短信验证码+生物识别
-2. **JWT令牌管理**：短期访问令牌+长期刷新令牌
-3. **会话管理**：安全的会话存储和过期策略
-4. **密码策略**：强密码要求、定期更换、哈希存储
-
-**安全特性**：
-| 安全特性 | 实现方式 | 安全等级 | 用户体验 |
-|----------|----------|----------|----------|
-| **密码哈希** | bcrypt、Argon2 | 高 | 无影响 |
-| **盐值加密** | 随机盐值 | 高 | 无影响 |
-| **多因素认证** | TOTP、SMS | 最高 | 中等影响 |
-| **令牌轮换** | 自动刷新 | 高 | 无影响 |
+**身份认证策略**：
+1. **密码策略**：强密码要求、密码哈希、盐值
+2. **多因素认证**：短信验证码、邮箱验证、TOTP
+3. **会话管理**：安全的Session管理、Token过期
+4. **登录保护**：账户锁定、验证码、IP限制
 
 **具体实现**：
 ```csharp
-// 安全的身份认证系统
-public class SecureAuthenticationService
-{
-    private readonly IUserRepository _userRepository;
-    private readonly IPasswordHasher _passwordHasher;
-    private readonly IJwtTokenService _jwtService;
-    private readonly ILogger<SecureAuthenticationService> _logger;
-    
-    // 用户登录
-    public async Task<AuthenticationResult> LoginAsync(LoginRequest request)
-    {
-        try
-        {
-            // 1. 输入验证
-            if (!ValidateLoginInput(request))
-            {
-                return AuthenticationResult.Failed("Invalid input");
-            }
-            
-            // 2. 查找用户
-            var user = await _userRepository.GetByEmailAsync(request.Email);
-            if (user == null)
-            {
-                // 防止用户枚举攻击
-                await Task.Delay(Random.Shared.Next(100, 500));
-                return AuthenticationResult.Failed("Invalid credentials");
-            }
-            
-            // 3. 验证密码
-            if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
-            {
-                await LogFailedLoginAttemptAsync(user.Id, request.IpAddress);
-                return AuthenticationResult.Failed("Invalid credentials");
-            }
-            
-            // 4. 检查账户状态
-            if (!user.IsActive)
-            {
-                return AuthenticationResult.Failed("Account is disabled");
-            }
-            
-            // 5. 检查登录尝试次数
-            if (user.FailedLoginAttempts >= 5)
-            {
-                var lockoutEnd = user.LastFailedLoginAttempt?.AddMinutes(15);
-                if (lockoutEnd > DateTime.UtcNow)
-                {
-                    return AuthenticationResult.Failed($"Account is locked until {lockoutEnd}");
-                }
-                // 重置失败次数
-                user.FailedLoginAttempts = 0;
-            }
-            
-            // 6. 生成JWT令牌
-            var accessToken = _jwtService.GenerateAccessToken(user);
-            var refreshToken = _jwtService.GenerateRefreshToken(user.Id);
-            
-            // 7. 记录成功登录
-            await LogSuccessfulLoginAsync(user.Id, request.IpAddress);
-            
-            return AuthenticationResult.Success(accessToken, refreshToken, user);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Login failed for email: {Email}", request.Email);
-            return AuthenticationResult.Failed("Authentication failed");
-        }
-    }
-    
-    // 令牌刷新
-    public async Task<AuthenticationResult> RefreshTokenAsync(string refreshToken)
-    {
-        try
-        {
-            // 验证刷新令牌
-            var userId = _jwtService.ValidateRefreshToken(refreshToken);
-            if (userId == null)
-            {
-                return AuthenticationResult.Failed("Invalid refresh token");
-            }
-            
-            // 获取用户信息
-            var user = await _userRepository.GetByIdAsync(userId.Value);
-            if (user == null || !user.IsActive)
-            {
-                return AuthenticationResult.Failed("User not found or inactive");
-            }
-            
-            // 生成新令牌
-            var newAccessToken = _jwtService.GenerateAccessToken(user);
-            var newRefreshToken = _jwtService.GenerateRefreshToken(user.Id);
-            
-            return AuthenticationResult.Success(newAccessToken, newRefreshToken, user);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Token refresh failed");
-            return AuthenticationResult.Failed("Token refresh failed");
-        }
-    }
-    
-    // 多因素认证
-    public async Task<bool> VerifyMfaAsync(int userId, string mfaCode)
-    {
-        var user = await _userRepository.GetByIdAsync(userId);
-        if (user?.MfaSecret == null)
-        {
-            return false;
-        }
-        
-        // 验证TOTP码
-        var totp = new Totp(Base32Encoding.ToBytes(user.MfaSecret));
-        return totp.VerifyTotp(mfaCode, out _, new VerificationWindow(1, 1));
-    }
-    
-    private bool ValidateLoginInput(LoginRequest request)
-    {
-        // 邮箱格式验证
-        if (string.IsNullOrEmpty(request.Email) || !IsValidEmail(request.Email))
-        {
-            return false;
-        }
-        
-        // 密码长度验证
-        if (string.IsNullOrEmpty(request.Password) || request.Password.Length < 8)
-        {
-            return false;
-        }
-        
-        // 防止SQL注入
-        if (ContainsDangerousCharacters(request.Email) || ContainsDangerousCharacters(request.Password))
-        {
-            return false;
-        }
-        
-        return true;
-    }
-    
-    private bool IsValidEmail(string email)
-    {
-        try
-        {
-            var addr = new System.Net.Mail.MailAddress(email);
-            return addr.Address == email;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    
-    private bool ContainsDangerousCharacters(string input)
-    {
-        var dangerousChars = new[] { "'", "\"", ";", "--", "/*", "*/", "<", ">", "&" };
-        return dangerousChars.Any(c => input.Contains(c));
-    }
-}
-
-// 密码哈希服务
-public class PasswordHasher : IPasswordHasher
+// 密码哈希和验证
+public class PasswordHasher
 {
     public string HashPassword(string password)
     {
-        // 使用bcrypt进行密码哈希
+        // 使用BCrypt进行密码哈希
         return BCrypt.Net.BCrypt.HashPassword(password, BCrypt.Net.BCrypt.GenerateSalt(12));
     }
     
-    public bool VerifyPassword(string password, string hash)
+    public bool VerifyPassword(string password, string hashedPassword)
     {
-        return BCrypt.Net.BCrypt.Verify(password, hash);
-    }
-}
-```
-
-**💡 面试加分点**：提到"我会实现多因素认证系统，使用bcrypt进行密码哈希，实现JWT令牌的自动刷新，建立登录失败监控和账户锁定机制"
-
----
-
-### Q5: 如何设计安全的授权系统？
-
-**面试官想了解什么**：你对授权控制的深入理解。
-
-**🎯 标准答案**：
-
-**授权模型设计**：
-1. **RBAC模型**：基于角色的访问控制
-2. **ABAC模型**：基于属性的访问控制
-3. **PBAC模型**：基于策略的访问控制
-4. **资源级授权**：细粒度的资源访问控制
-
-**授权策略**：
-| 授权类型 | 实现方式 | 适用场景 | 复杂度 |
-|----------|----------|----------|--------|
-| **角色授权** | 用户-角色-权限 | 简单业务 | 低 |
-| **属性授权** | 动态策略评估 | 复杂业务 | 高 |
-| **策略授权** | 规则引擎 | 灵活授权 | 中等 |
-| **资源授权** | 资源级权限 | 细粒度控制 | 高 |
-
-**具体实现**：
-```csharp
-// 安全的授权系统
-public class SecureAuthorizationService
-{
-    private readonly IUserRepository _userRepository;
-    private readonly IRoleRepository _roleRepository;
-    private readonly IPolicyEngine _policyEngine;
-    private readonly ILogger<SecureAuthorizationService> _logger;
-    
-    // 基于角色的授权
-    public async Task<bool> AuthorizeByRoleAsync(int userId, string resource, string action)
-    {
-        try
-        {
-            var user = await _userRepository.GetByIdWithRolesAsync(userId);
-            if (user == null)
-            {
-                return false;
-            }
-            
-            // 检查用户角色权限
-            foreach (var role in user.Roles)
-            {
-                if (role.Permissions.Any(p => 
-                    p.Resource == resource && 
-                    p.Action == action && 
-                    p.IsActive))
-                {
-                    return true;
-                }
-            }
-            
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Role-based authorization failed for user {UserId}", userId);
-            return false;
-        }
-    }
-    
-    // 基于属性的授权
-    public async Task<bool> AuthorizeByAttributeAsync(int userId, string resource, string action, object context)
-    {
-        try
-        {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null)
-            {
-                return false;
-            }
-            
-            // 构建授权上下文
-            var authContext = new AuthorizationContext
-            {
-                User = user,
-                Resource = resource,
-                Action = action,
-                Context = context,
-                Timestamp = DateTime.UtcNow
-            };
-            
-            // 使用策略引擎评估
-            return await _policyEngine.EvaluateAsync(authContext);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Attribute-based authorization failed for user {UserId}", userId);
-            return false;
-        }
-    }
-    
-    // 资源级授权
-    public async Task<bool> AuthorizeResourceAccessAsync(int userId, int resourceId, string resourceType, string action)
-    {
-        try
-        {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null)
-            {
-                return false;
-            }
-            
-            // 检查资源所有权
-            if (await IsResourceOwnerAsync(userId, resourceId, resourceType))
-            {
-                return true;
-            }
-            
-            // 检查共享权限
-            if (await HasSharedAccessAsync(userId, resourceId, resourceType, action))
-            {
-                return true;
-            }
-            
-            // 检查角色权限
-            return await AuthorizeByRoleAsync(userId, resourceType, action);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Resource authorization failed for user {UserId}", userId);
-                    return false;
-        }
-    }
-    
-    // 动态权限检查
-    public async Task<bool> CheckDynamicPermissionAsync(int userId, string permission, object context)
-    {
-        try
-        {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null)
-            {
-                return false;
-            }
-            
-            // 构建动态权限上下文
-            var permissionContext = new DynamicPermissionContext
-            {
-                User = user,
-                Permission = permission,
-                Context = context,
-                Time = DateTime.UtcNow,
-                UserLocation = await GetUserLocationAsync(userId),
-                UserDevice = await GetUserDeviceAsync(userId)
-            };
-            
-            // 评估动态权限
-            return await _policyEngine.EvaluateDynamicPermissionAsync(permissionContext);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Dynamic permission check failed for user {UserId}", userId);
-            return false;
-        }
+        // 验证密码
+        return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
     }
 }
 
-// 策略引擎
-public class PolicyEngine : IPolicyEngine
-{
-    private readonly ILogger<PolicyEngine> _logger;
-    private readonly List<IAuthorizationPolicy> _policies;
-    
-    public PolicyEngine(ILogger<PolicyEngine> logger, IEnumerable<IAuthorizationPolicy> policies)
-    {
-        _logger = logger;
-        _policies = policies.ToList();
-    }
-    
-    public async Task<bool> EvaluateAsync(AuthorizationContext context)
-    {
-        try
-        {
-            foreach (var policy in _policies)
-            {
-                if (policy.CanHandle(context))
-                {
-                    var result = await policy.EvaluateAsync(context);
-                    if (!result)
-                    {
-                        _logger.LogInformation("Policy {PolicyType} denied access for user {UserId}", 
-                            policy.GetType().Name, context.User.Id);
-                        return false;
-                    }
-                }
-            }
-            
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Policy evaluation failed");
-            return false; // 默认拒绝
-        }
-    }
-}
-
-// 授权策略接口
-public interface IAuthorizationPolicy
-{
-    bool CanHandle(AuthorizationContext context);
-    Task<bool> EvaluateAsync(AuthorizationContext context);
-}
-
-// 时间策略示例
-public class TimeBasedPolicy : IAuthorizationPolicy
-{
-    public bool CanHandle(AuthorizationContext context)
-    {
-        return context.Resource == "sensitive_data";
-    }
-    
-    public async Task<bool> EvaluateAsync(AuthorizationContext context)
-    {
-        var currentHour = DateTime.UtcNow.Hour;
-        
-        // 只允许在办公时间访问敏感数据
-        return currentHour >= 9 && currentHour <= 18;
-    }
-}
-```
-
-**💡 面试加分点**：提到"我会实现多层次授权系统，使用RBAC+ABAC混合模型，实现资源级权限控制，通过策略引擎支持动态权限评估"
-
----
-
-## 🚀 技术要点总结
-
-### 安全防护策略指南
-
-**安全威胁分类与防护**：
-| 威胁类型 | 主要攻击方式 | 防护策略 | 安全等级 | 实施难度 |
-|----------|--------------|----------|----------|----------|
-| **注入攻击** | SQL注入、XSS | 输入验证、参数化查询 | 最高 | 中等 |
-| **身份认证** | 密码破解、会话劫持 | JWT、MFA、HTTPS | 高 | 中等 |
-| **授权控制** | 权限提升、越权访问 | RBAC、最小权限 | 高 | 中等 |
-| **数据保护** | 数据泄露、篡改 | 加密、签名、备份 | 高 | 高 |
-| **网络安全** | DDoS、中间人攻击 | 防火墙、VPN、HTTPS | 高 | 高 |
-
-**安全配置策略**：
-```csharp
-// 安全配置和中间件
-public class SecurityConfig
-{
-    public static void ConfigureSecurity(WebApplication app)
-    {
-        // 1. HTTPS重定向
-        app.UseHttpsRedirection();
-        
-        // 2. 安全头设置
-        app.Use(async (context, next) =>
-        {
-            context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
-            context.Response.Headers.Add("X-Frame-Options", "DENY");
-            context.Response.Headers.Add("X-XSS-Protection", "1; mode=block");
-            context.Response.Headers.Add("Referrer-Policy", "strict-origin-when-cross-origin");
-            context.Response.Headers.Add("Content-Security-Policy", 
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
-            
-            await next();
-        });
-        
-        // 3. 身份认证
-        app.UseAuthentication();
-        app.UseAuthorization();
-        
-        // 4. 异常处理
-        app.UseExceptionHandler("/Error");
-        
-        // 5. 日志记录
-        app.Use(async (context, next) =>
-        {
-            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-            
-            logger.LogInformation("Request: {Method} {Path} from {IP}", 
-                context.Request.Method, 
-                context.Request.Path, 
-                context.Connection.RemoteIpAddress);
-            
-            await next();
-            
-            logger.LogInformation("Response: {StatusCode} for {Path}", 
-                context.Response.StatusCode, 
-                context.Request.Path);
-        });
-    }
-}
-
-// 在Program.cs中配置
-var builder = WebApplication.CreateBuilder(args);
-
-// 配置身份认证
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
-        };
-    });
-
-// 配置授权策略
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("AdminOnly", policy =>
-        policy.RequireRole("Admin"));
-    
-    options.AddPolicy("UserAccess", policy =>
-        policy.RequireAuthenticatedUser());
-});
-
-var app = builder.Build();
-
-// 应用安全配置
-SecurityConfig.ConfigureSecurity(app);
-```
-
----
-
-## 🔧 实战应用指南
-
-### 场景1：高安全电商系统设计
-
-**业务需求**：构建支持100万+用户的电商系统，要求达到银行级安全标准
-
-**🎯 技术方案**：
-```
-用户请求 → 安全网关 → 身份认证 → 权限验证 → 业务处理 → 安全响应
-    ↓         ↓         ↓         ↓         ↓         ↓
-  请求接收   安全过滤   身份验证   权限检查   业务逻辑   安全返回
-```
-
-**核心实现**：
-1. **安全网关**：实现请求过滤、限流、防DDoS
-2. **身份认证**：JWT令牌、多因素认证、生物识别
-3. **权限控制**：基于角色的访问控制、动态权限
-4. **数据保护**：端到端加密、数据脱敏、审计日志
-
-**代码实现**：
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-[Authorize] // 要求身份认证
-public class SecureOrderController : ControllerBase
-{
-    private readonly IOrderService _orderService;
-    private readonly ILogger<SecureOrderController> _logger;
-    private readonly IAuditService _auditService;
-    
-    public SecureOrderController(
-        IOrderService orderService,
-        ILogger<SecureOrderController> logger,
-        IAuditService auditService)
-    {
-        _orderService = orderService;
-        _logger = logger;
-        _auditService = auditService;
-    }
-    
-    [HttpPost("create")]
-    [Authorize(Policy = "UserAccess")] // 使用授权策略
-    [RateLimit(MaxRequests = 10, TimeWindow = 60)] // 限流保护
-    public async Task<ActionResult<OrderResult>> CreateOrderAsync([FromBody] CreateOrderRequest request)
-    {
-        try
-        {
-            // 1. 输入验证
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            // 2. 业务规则验证
-            var validationResult = await ValidateOrderRequestAsync(request);
-            if (!validationResult.IsValid)
-            {
-                return BadRequest(validationResult.Errors);
-            }
-            
-            // 3. 权限验证
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId) || userId != request.UserId.ToString())
-            {
-                _logger.LogWarning("Unauthorized order creation attempt by user {UserId}", userId);
-                return Forbid();
-            }
-            
-            // 4. 业务处理
-            var order = await _orderService.CreateOrderAsync(request);
-            
-            // 5. 审计日志
-            await _auditService.LogAsync(new AuditEntry
-            {
-                UserId = userId,
-                Action = "CreateOrder",
-                Resource = $"Order_{order.Id}",
-                Timestamp = DateTime.UtcNow,
-                IPAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
-            });
-            
-            _logger.LogInformation("Order created successfully: {OrderId} by user {UserId}", 
-                order.Id, userId);
-            
-            return Ok(new OrderResult { Success = true, OrderId = order.Id });
-        }
-        catch (SecurityException ex)
-        {
-            _logger.LogWarning(ex, "Security violation in order creation by user {UserId}", 
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-            return Forbid();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create order for user {UserId}", 
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-            return StatusCode(500, new OrderResult { Success = false, Message = "Order creation failed" });
-        }
-    }
-    
-    private async Task<ValidationResult> ValidateOrderRequestAsync(CreateOrderRequest request)
-    {
-        var errors = new List<string>();
-        
-        // 验证商品存在性
-        if (request.Items == null || !request.Items.Any())
-        {
-            errors.Add("Order must contain at least one item");
-        }
-        
-        // 验证价格合理性
-        if (request.TotalAmount <= 0 || request.TotalAmount > 100000)
-        {
-            errors.Add("Invalid order amount");
-        }
-        
-        // 验证用户状态
-        var user = await _userService.GetUserAsync(request.UserId);
-        if (user == null || !user.IsActive)
-        {
-            errors.Add("Invalid user account");
-        }
-        
-        return new ValidationResult
-        {
-            IsValid = !errors.Any(),
-            Errors = errors
-        };
-    }
-}
-
-// 限流中间件
-public class RateLimitAttribute : ActionFilterAttribute
-{
-    private readonly int _maxRequests;
-    private readonly int _timeWindow;
-    private static readonly Dictionary<string, Queue<DateTime>> _requestHistory = new();
-    private static readonly object _lock = new object();
-    
-    public RateLimitAttribute(int maxRequests, int timeWindow)
-    {
-        _maxRequests = maxRequests;
-        _timeWindow = timeWindow;
-    }
-    
-    public override void OnActionExecuting(ActionExecutingContext context)
-    {
-        var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        
-        lock (_lock)
-        {
-            if (!_requestHistory.ContainsKey(ipAddress))
-            {
-                _requestHistory[ipAddress] = new Queue<DateTime>();
-            }
-            
-            var queue = _requestHistory[ipAddress];
-            var now = DateTime.UtcNow;
-            
-            // 清理过期的请求记录
-            while (queue.Count > 0 && (now - queue.Peek()).TotalSeconds > _timeWindow)
-            {
-                queue.Dequeue();
-            }
-            
-            // 检查是否超过限制
-            if (queue.Count >= _maxRequests)
-            {
-                context.Result = new StatusCodeResult(429); // Too Many Requests
-                return;
-            }
-            
-            // 记录当前请求
-            queue.Enqueue(now);
-        }
-        
-        base.OnActionExecuting(context);
-    }
-}
-```
-
-### 场景2：数据保护系统设计
-
-**业务需求**：保护用户敏感数据，符合GDPR等数据保护法规要求
-
-**🎯 技术方案**：
-```
-数据输入 → 数据验证 → 数据加密 → 安全存储 → 访问控制 → 审计日志
-    ↓         ↓         ↓         ↓         ↓         ↓
-  数据接收   格式验证   加密处理   安全存储   权限验证   操作记录
-```
-
-**核心实现**：
-1. **数据加密**：AES加密、RSA非对称加密
-2. **数据脱敏**：敏感信息脱敏显示
-3. **访问控制**：基于角色的数据访问控制
-4. **审计日志**：完整的操作审计记录
-
----
-
-## 📊 技术对比：安全防护效果分析
-
-### 安全防护策略对比表
-
-| 防护策略 | 防护效果 | 性能影响 | 实施成本 | 维护难度 | 推荐指数 |
-|----------|----------|----------|----------|----------|----------|
-| **输入验证** | 中等 | 低 | 低 | 低 | ⭐⭐⭐⭐ |
-| **参数化查询** | 高 | 无 | 低 | 低 | ⭐⭐⭐⭐⭐ |
-| **身份认证** | 高 | 中等 | 中等 | 中等 | ⭐⭐⭐⭐⭐ |
-| **权限控制** | 高 | 低 | 中等 | 中等 | ⭐⭐⭐⭐⭐ |
-| **数据加密** | 最高 | 中等 | 高 | 高 | ⭐⭐⭐⭐ |
-
-### 安全威胁防护流程图
-
-```
-安全威胁识别
-    ↓
-威胁等级评估
-    ↓
-防护策略选择
-    ↓
-多层防护实施
-    ↓
-安全测试验证
-    ↓
-持续监控改进
-```
-
-### 安全架构图
-
-```
-客户端应用
-    ↓
-HTTPS加密传输
-    ↓
-安全网关 (WAF)
-    ↓
-身份认证服务
-    ↓
-授权控制服务
-    ↓
-业务应用服务
-    ↓
-数据加密存储
-    ↓
-审计日志系统
-```
-
----
-
-## 📊 安全防护深度指南
-
-### 身份认证深度实现
-
-**JWT令牌安全策略**：
-| 安全策略 | 实现方式 | 安全等级 | 性能影响 | 推荐指数 |
-|----------|----------|----------|----------|----------|
-| **令牌签名** | HMAC-SHA256 | 高 | 低 | ⭐⭐⭐⭐⭐ |
-| **令牌过期** | 短期令牌 + 刷新令牌 | 高 | 低 | ⭐⭐⭐⭐⭐ |
-| **令牌轮换** | 定期更换签名密钥 | 最高 | 低 | ⭐⭐⭐⭐⭐ |
-| **令牌撤销** | 黑名单机制 | 高 | 中等 | ⭐⭐⭐⭐ |
-
-**具体实现示例**：
-```csharp
-public class JwtTokenService
+// JWT Token生成和验证
+public class JwtService
 {
     private readonly IConfiguration _configuration;
-    private readonly ILogger<JwtTokenService> _logger;
-    private readonly IMemoryCache _blacklist;
     
-    public JwtTokenService(IConfiguration configuration, ILogger<JwtTokenService> logger, IMemoryCache blacklist)
+    public JwtService(IConfiguration configuration)
     {
         _configuration = configuration;
-        _logger = logger;
-        _blacklist = blacklist;
     }
     
     public string GenerateToken(User user)
@@ -1126,160 +258,744 @@ public class JwtTokenService
         };
         
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(15), // 短期令牌
-            signingCredentials: credentials
-        );
+            expires: DateTime.Now.AddHours(1),
+            signingCredentials: creds);
         
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
     
-    public string GenerateRefreshToken()
-    {
-        var randomNumber = new byte[32];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(randomNumber);
-        return Convert.ToBase64String(randomNumber);
-    }
-    
-    public bool IsTokenBlacklisted(string token)
-    {
-        return _blacklist.TryGetValue(token, out _);
-    }
-    
-    public void BlacklistToken(string token)
+    public ClaimsPrincipal ValidateToken(string token)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var jwtToken = tokenHandler.ReadJwtToken(token);
+        var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]);
         
-        var timeUntilExpiry = jwtToken.ValidTo - DateTime.UtcNow;
-        if (timeUntilExpiry > TimeSpan.Zero)
+        var validationParameters = new TokenValidationParameters
         {
-            _blacklist.Set(token, true, timeUntilExpiry);
-        }
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(key),
+            ValidateIssuer = true,
+            ValidIssuer = _configuration["Jwt:Issuer"],
+            ValidateAudience = true,
+            ValidAudience = _configuration["Jwt:Audience"],
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+        
+        return tokenHandler.ValidateToken(token, validationParameters, out _);
     }
 }
 ```
 
-### 数据加密策略
-
-**加密策略选择**：
-| 加密类型 | 适用场景 | 安全等级 | 性能影响 | 推荐指数 |
-|----------|----------|----------|----------|----------|
-| **对称加密** | 大量数据加密 | 高 | 低 | ⭐⭐⭐⭐⭐ |
-| **非对称加密** | 密钥交换、数字签名 | 最高 | 高 | ⭐⭐⭐⭐⭐ |
-| **哈希算法** | 密码存储、数据完整性 | 高 | 低 | ⭐⭐⭐⭐⭐ |
-| **盐值加密** | 密码安全 | 高 | 低 | ⭐⭐⭐⭐⭐ |
+**💡 面试加分点**：提到"我会使用BCrypt进行密码哈希，使用JWT进行无状态认证"
 
 ---
 
-## 💡 技术价值：安全防护的重要性
+### Q4: 如何实现基于角色的授权？
 
-> 🚀 **安全防护不仅仅是技术问题**
-> 
-> 想象一下，你的用户信任你，将个人信息、财务数据、商业机密都托付给你，
-> 如果这些数据被泄露，不仅会造成巨大的经济损失，更会摧毁用户的信任。
-> 
-> 这就是为什么安全防护如此重要！它不仅仅是一个技术选择，
-> 更是企业声誉、用户信任和业务成功的关键因素。
-> 
-> 💡 **技术价值**：掌握安全防护，你就能：
-> - 构建安全可靠的系统，保护用户数据
-> - 在面试中展现技术深度，获得更好的机会
-> - 在实际项目中解决安全问题，成为团队的安全专家
-> - 跟上安全发展趋势，保持竞争力
-> 
-> 🎯 **业务价值**：好的安全防护能够：
-> - 保护用户隐私，建立用户信任
-> - 避免数据泄露，减少法律风险
-> - 提升系统可靠性，支持业务发展
-> - 符合法规要求，获得市场认可
-> 
-> 🏆 **个人价值**：成为安全专家，你就能：
-> - 在团队中建立安全权威，获得更多机会
-> - 解决复杂的安全挑战，提升个人成就感
-> - 为业务创造价值，获得更好的职业发展
-> - 成为团队不可或缺的安全骨干
+**面试官想了解什么**：你对授权的理解。
+
+**🎯 标准答案**：
+
+**授权策略**：
+1. **基于角色授权**：使用[Authorize(Roles = "Admin")]
+2. **基于策略授权**：使用Policy-based授权
+3. **基于资源授权**：检查用户对特定资源的权限
+4. **动态授权**：运行时检查用户权限
+
+**具体实现**：
+```csharp
+// 基于角色的授权
+[Authorize(Roles = "Admin")]
+public class AdminController : Controller
+{
+    public IActionResult Index()
+    {
+        return View();
+    }
+}
+
+// 基于策略的授权
+public class OrderController : Controller
+{
+    [Authorize(Policy = "CanManageOrders")]
+    public IActionResult ManageOrders()
+    {
+        return View();
+    }
+    
+    [Authorize(Policy = "CanViewOrders")]
+    public IActionResult ViewOrders()
+    {
+        return View();
+    }
+}
+
+// 策略配置
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("CanManageOrders", policy =>
+                policy.RequireRole("Admin", "Manager"));
+            
+            options.AddPolicy("CanViewOrders", policy =>
+                policy.RequireRole("Admin", "Manager", "User"));
+        });
+    }
+}
+
+// 基于资源的授权
+public class OrderService
+{
+    public async Task<bool> CanAccessOrderAsync(int userId, int orderId)
+    {
+        var order = await _context.Orders.FindAsync(orderId);
+        if (order == null) return false;
+        
+        // 检查用户是否有权限访问此订单
+        return order.UserId == userId || await IsUserAdminAsync(userId);
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用Policy-based授权，实现灵活的权限控制"
+
+---
+
+### Q5: 如何保护敏感数据？
+
+**面试官想了解什么**：你对数据保护的理解。
+
+**🎯 标准答案**：
+
+**数据保护策略**：
+1. **数据加密**：传输加密、存储加密、字段级加密
+2. **数据脱敏**：敏感信息脱敏显示
+3. **访问控制**：基于角色的数据访问控制
+4. **审计日志**：记录数据访问和修改操作
+
+**具体实现**：
+```csharp
+// 数据加密服务
+public class EncryptionService
+{
+    private readonly string _key;
+    
+    public EncryptionService(IConfiguration configuration)
+    {
+        _key = configuration["Encryption:Key"];
+    }
+    
+    public string Encrypt(string plainText)
+    {
+        using var aes = Aes.Create();
+        aes.Key = Convert.FromBase64String(_key);
+        aes.GenerateIV();
+        
+        using var encryptor = aes.CreateEncryptor();
+        using var msEncrypt = new MemoryStream();
+        using var csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write);
+        using var swEncrypt = new StreamWriter(csEncrypt);
+        
+        swEncrypt.Write(plainText);
+        swEncrypt.Flush();
+        csEncrypt.FlushFinalBlock();
+        
+        var encrypted = msEncrypt.ToArray();
+        var result = new byte[aes.IV.Length + encrypted.Length];
+        aes.IV.CopyTo(result, 0);
+        encrypted.CopyTo(result, aes.IV.Length);
+        
+        return Convert.ToBase64String(result);
+    }
+    
+    public string Decrypt(string cipherText)
+    {
+        var fullCipher = Convert.FromBase64String(cipherText);
+        
+        using var aes = Aes.Create();
+        aes.Key = Convert.FromBase64String(_key);
+        
+        var iv = new byte[aes.IV.Length];
+        var cipher = new byte[fullCipher.Length - iv.Length];
+        
+        Array.Copy(fullCipher, 0, iv, 0, iv.Length);
+        Array.Copy(fullCipher, iv.Length, cipher, 0, cipher.Length);
+        
+        aes.IV = iv;
+        
+        using var decryptor = aes.CreateDecryptor();
+        using var msDecrypt = new MemoryStream(cipher);
+        using var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read);
+        using var srDecrypt = new StreamReader(csDecrypt);
+        
+        return srDecrypt.ReadToEnd();
+    }
+}
+
+// 敏感数据脱敏
+public class DataMaskingService
+{
+    public string MaskEmail(string email)
+    {
+        if (string.IsNullOrEmpty(email)) return email;
+        
+        var parts = email.Split('@');
+        if (parts.Length != 2) return email;
+        
+        var username = parts[0];
+        var domain = parts[1];
+        
+        if (username.Length <= 2)
+            return $"{username[0]}***@{domain}";
+        
+        return $"{username[0]}{new string('*', username.Length - 2)}{username[^1]}@{domain}";
+    }
+    
+    public string MaskPhoneNumber(string phoneNumber)
+    {
+        if (string.IsNullOrEmpty(phoneNumber) || phoneNumber.Length < 4) 
+            return phoneNumber;
+        
+        return $"{phoneNumber[..3]}****{phoneNumber[^4..]}";
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用AES加密保护敏感数据，实现数据脱敏显示"
+
+---
+
+### Q6: 如何防止CSRF攻击？
+
+**面试官想了解什么**：你对CSRF攻击的理解。
+
+**🎯 标准答案**：
+
+**CSRF防护策略**：
+1. **Anti-Forgery Token**：使用ASP.NET Core内置的防伪令牌
+2. **SameSite Cookie**：设置Cookie的SameSite属性
+3. **Referer验证**：验证请求来源
+4. **双重提交**：要求用户进行二次确认
+
+**具体实现**：
+```csharp
+// 在视图中添加防伪令牌
+@model CreateOrderModel
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    
+    <div class="form-group">
+        <label asp-for="ProductId">产品ID</label>
+        <input asp-for="ProductId" class="form-control" />
+    </div>
+    
+    <div class="form-group">
+        <label asp-for="Quantity">数量</label>
+        <input asp-for="Quantity" class="form-control" />
+    </div>
+    
+    <button type="submit" class="btn btn-primary">创建订单</button>
+</form>
+
+// 在控制器中验证防伪令牌
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Create(CreateOrderModel model)
+{
+    if (!ModelState.IsValid)
+    {
+        return View(model);
+    }
+    
+    // 处理订单创建逻辑
+    var order = await _orderService.CreateOrderAsync(model);
+    
+    return RedirectToAction(nameof(Details), new { id = order.Id });
+}
+
+// 配置Cookie SameSite属性
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.Configure<CookiePolicyOptions>(options =>
+        {
+            options.MinimumSameSitePolicy = SameSiteMode.Strict;
+            options.HttpOnly = HttpOnlyPolicy.Always;
+            options.Secure = CookieSecurePolicy.Always;
+        });
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用ASP.NET Core内置的防伪令牌，配置安全的Cookie策略"
+
+---
+
+### Q7: 如何实现安全的文件上传？
+
+**面试官想了解什么**：你对文件安全的理解。
+
+**🎯 标准答案**：
+
+**文件上传安全策略**：
+1. **文件类型验证**：检查文件扩展名和MIME类型
+2. **文件大小限制**：限制上传文件的大小
+3. **文件内容扫描**：扫描文件内容，检测恶意代码
+4. **存储安全**：将文件存储在安全的位置，限制访问权限
+
+**具体实现**：
+```csharp
+// 安全的文件上传服务
+public class SecureFileUploadService
+{
+    private readonly string[] _allowedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".pdf", ".doc", ".docx" };
+    private readonly string[] _allowedMimeTypes = { "image/jpeg", "image/png", "image/gif", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+    private readonly long _maxFileSize = 10 * 1024 * 1024; // 10MB
+    
+    public async Task<FileUploadResult> UploadFileAsync(IFormFile file)
+    {
+        var result = new FileUploadResult();
+        
+        try
+        {
+            // 验证文件大小
+            if (file.Length > _maxFileSize)
+            {
+                result.Success = false;
+                result.ErrorMessage = "文件大小超过限制";
+                return result;
+            }
+            
+            // 验证文件扩展名
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!_allowedExtensions.Contains(extension))
+            {
+                result.Success = false;
+                result.ErrorMessage = "不支持的文件类型";
+                return result;
+            }
+            
+            // 验证MIME类型
+            if (!_allowedMimeTypes.Contains(file.ContentType.ToLowerInvariant()))
+            {
+                result.Success = false;
+                result.ErrorMessage = "不支持的文件类型";
+                return result;
+            }
+            
+            // 生成安全的文件名
+            var fileName = GenerateSecureFileName(file.FileName);
+            var filePath = Path.Combine("uploads", fileName);
+            
+            // 保存文件
+            using var stream = new FileStream(filePath, FileMode.Create);
+            await file.CopyToAsync(stream);
+            
+            result.Success = true;
+            result.FileName = fileName;
+            result.FilePath = filePath;
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.ErrorMessage = "文件上传失败";
+            result.Exception = ex;
+        }
+        
+        return result;
+    }
+    
+    private string GenerateSecureFileName(string originalFileName)
+    {
+        var extension = Path.GetExtension(originalFileName);
+        var fileName = Path.GetFileNameWithoutExtension(originalFileName);
+        
+        // 移除特殊字符，生成安全的文件名
+        fileName = Regex.Replace(fileName, @"[^a-zA-Z0-9\-_]", "");
+        
+        // 添加时间戳，避免文件名冲突
+        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+        
+        return $"{fileName}_{timestamp}{extension}";
+    }
+}
+
+public class FileUploadResult
+{
+    public bool Success { get; set; }
+    public string FileName { get; set; }
+    public string FilePath { get; set; }
+    public string ErrorMessage { get; set; }
+    public Exception Exception { get; set; }
+}
+```
+
+**💡 面试加分点**：提到"我会使用多层验证策略，包括文件类型、大小、内容扫描和存储安全"
+
+---
+
+## 🏗️ 实战场景分析
+
+### 场景1：电商系统安全防护
+
+**业务需求**：保护用户账户和支付信息的安全
+
+**🎯 技术方案**：
+
+```
+用户请求 → 安全网关 → 应用层 → 数据层
+   ↓         ↓         ↓         ↓
+  输入验证   身份认证   业务逻辑   数据加密
+```
+
+**核心实现**：
+1. **身份认证**：JWT Token + 多因素认证
+2. **数据保护**：敏感数据加密存储，传输使用HTTPS
+3. **访问控制**：基于角色的权限控制
+4. **安全监控**：实时监控异常访问和攻击行为
+
+**🔑 关键决策**：使用多层安全防护，实现纵深防御
+
+---
+
+### 场景2：金融系统安全防护
+
+**业务需求**：保护金融交易和用户资金安全
+
+**🎯 技术方案**：
+
+```
+交易请求 → 风控系统 → 安全验证 → 交易处理
+   ↓         ↓         ↓         ↓
+  风险评估   规则引擎   多因素验证   安全处理
+```
+
+**核心实现**：
+1. **风控系统**：实时风险评估和异常检测
+2. **安全验证**：多因素认证、生物识别
+3. **数据加密**：端到端加密，密钥管理
+4. **审计日志**：完整的操作审计和合规记录
+
+---
+
+## 📊 安全防护工具对比
+
+### 身份认证工具对比
+
+| 工具 | 适用场景 | 优势 | 劣势 |
+|------|----------|------|------|
+| **ASP.NET Core Identity** | 内置身份认证 | 集成度高，功能完整 | 定制化程度有限 |
+| **IdentityServer** | 单点登录 | 功能强大，支持OAuth2 | 学习曲线陡峭 |
+| **Auth0** | 第三方认证 | 功能丰富，易于使用 | 成本较高 |
+| **自研认证** | 特殊需求 | 完全可控，定制化高 | 开发成本高 |
+
+### 加密工具对比
+
+| 工具 | 适用场景 | 优势 | 劣势 |
+|------|----------|------|------|
+| **AES** | 对称加密 | 性能高，安全性好 | 密钥管理复杂 |
+| **RSA** | 非对称加密 | 密钥管理简单 | 性能较低 |
+| **BCrypt** | 密码哈希 | 安全性高，自动加盐 | 计算开销大 |
+| **Argon2** | 密码哈希 | 最新算法，安全性最高 | 计算开销大 |
+
+---
+
+## 🏗️ 安全防护深度指南
+
+### 1.1 OWASP Top 10防护策略
+
+**🎯 核心问题**：如何防护OWASP Top 10安全威胁？
+
+**OWASP Top 10防护策略**：
+1. **注入攻击**：参数化查询、输入验证、输出编码
+2. **身份认证失效**：强密码策略、多因素认证、会话管理
+3. **敏感数据泄露**：数据加密、传输加密、访问控制
+4. **XML外部实体**：禁用外部实体、使用安全的XML解析器
+5. **访问控制失效**：基于角色的访问控制、最小权限原则
+6. **安全配置错误**：安全配置、定期安全审计
+7. **XSS攻击**：输出编码、内容安全策略、输入验证
+8. **不安全的反序列化**：使用安全的序列化格式、输入验证
+9. **使用已知漏洞组件**：定期更新组件、漏洞扫描
+10. **不足的日志记录**：完整的审计日志、日志监控
+
+**💡 面试加分点**：
+- 提到具体策略："我会使用OWASP ASVS框架评估应用安全性，定期进行安全审计"
+- 展示安全意识："建立安全开发生命周期(SDLC)，在开发过程中集成安全测试"
+
+### 1.2 网络安全防护策略
+
+**🎯 核心问题**：如何保护网络通信安全？
+
+**网络安全策略**：
+1. **HTTPS强制**：所有通信使用HTTPS，配置HSTS
+2. **证书管理**：使用有效的SSL证书，定期更新
+3. **网络隔离**：使用VLAN、防火墙隔离不同网络
+4. **入侵检测**：部署IDS/IPS系统，监控网络流量
+
+**具体实现**：
+```csharp
+// 强制HTTPS中间件
+public class HttpsRedirectionMiddleware
+{
+    private readonly RequestDelegate _next;
+    
+    public HttpsRedirectionMiddleware(RequestDelegate next)
+    {
+        _next = next;
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        if (!context.Request.IsHttps)
+        {
+            var httpsUrl = $"https://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
+            context.Response.Redirect(httpsUrl, permanent: true);
+            return;
+        }
+        
+        await _next(context);
+    }
+}
+
+// 安全头配置
+public class SecurityHeadersMiddleware
+{
+    private readonly RequestDelegate _next;
+    
+    public SecurityHeadersMiddleware(RequestDelegate next)
+    {
+        _next = next;
+    }
+    
+    public async Task InvokeAsync(HttpContext context)
+    {
+        // 添加安全头
+        context.Response.Headers.Add("X-Frame-Options", "DENY");
+        context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
+        context.Response.Headers.Add("X-XSS-Protection", "1; mode=block");
+        context.Response.Headers.Add("Referrer-Policy", "strict-origin-when-cross-origin");
+        
+        await _next(context);
+    }
+}
+```
+
+**💡 面试加分点**：
+- 提到具体配置："配置HSTS强制HTTPS，设置安全头防止点击劫持和XSS攻击"
+- 展示网络知识："使用网络隔离和入侵检测系统，建立多层网络安全防护"
+
+### 1.3 数据安全防护策略
+
+**🎯 核心问题**：如何保护敏感数据安全？
+
+**数据安全策略**：
+1. **数据分类**：根据敏感程度对数据进行分类
+2. **加密策略**：敏感数据加密存储，传输加密
+3. **访问控制**：基于角色的数据访问控制
+4. **数据脱敏**：敏感信息脱敏显示和存储
+
+**具体实现**：
+```csharp
+// 数据分类和加密
+public class DataClassificationService
+{
+    public enum DataSensitivity
+    {
+        Public,
+        Internal,
+        Confidential,
+        Restricted
+    }
+    
+    public class DataClassification
+    {
+        public string FieldName { get; set; }
+        public DataSensitivity Sensitivity { get; set; }
+        public bool RequiresEncryption { get; set; }
+        public bool RequiresMasking { get; set; }
+    }
+    
+    private readonly Dictionary<string, DataClassification> _classifications;
+    
+    public DataClassificationService()
+    {
+        _classifications = new Dictionary<string, DataClassification>
+        {
+            { "Email", new DataClassification { FieldName = "Email", Sensitivity = DataSensitivity.Confidential, RequiresEncryption = true, RequiresMasking = true } },
+            { "PhoneNumber", new DataClassification { FieldName = "PhoneNumber", Sensitivity = DataSensitivity.Confidential, RequiresEncryption = true, RequiresMasking = true } },
+            { "CreditCard", new DataClassification { FieldName = "CreditCard", Sensitivity = DataSensitivity.Restricted, RequiresEncryption = true, RequiresMasking = true } },
+            { "Name", new DataClassification { FieldName = "Name", Sensitivity = DataSensitivity.Internal, RequiresEncryption = false, RequiresMasking = false } }
+        };
+    }
+    
+    public DataClassification GetClassification(string fieldName)
+    {
+        return _classifications.TryGetValue(fieldName, out var classification) ? classification : null;
+    }
+}
+
+// 数据脱敏服务
+public class DataMaskingService
+{
+    public string MaskData(string data, string fieldName, DataClassificationService.DataSensitivity sensitivity)
+    {
+        if (string.IsNullOrEmpty(data)) return data;
+        
+        return sensitivity switch
+        {
+            DataClassificationService.DataSensitivity.Public => data,
+            DataClassificationService.DataSensitivity.Internal => MaskInternalData(data),
+            DataClassificationService.DataSensitivity.Confidential => MaskConfidentialData(data),
+            DataClassificationService.DataSensitivity.Restricted => MaskRestrictedData(data),
+            _ => data
+        };
+    }
+    
+    private string MaskInternalData(string data)
+    {
+        if (data.Length <= 2) return data;
+        return $"{data[0]}{new string('*', data.Length - 2)}";
+    }
+    
+    private string MaskConfidentialData(string data)
+    {
+        if (data.Length <= 4) return new string('*', data.Length);
+        return $"{data[..2]}{new string('*', data.Length - 4)}{data[^2..]}";
+    }
+    
+    private string MaskRestrictedData(string data)
+    {
+        return new string('*', data.Length);
+    }
+}
+```
+
+**💡 面试加分点**：
+- 提到具体实现："我会根据数据敏感程度实施不同的保护策略，使用加密和脱敏技术"
+- 展示合规意识："遵循数据保护法规，建立完整的数据安全策略和流程"
+
+---
+
+## 🚀 安全监控和响应
+
+### 2.1 安全监控体系设计
+
+**🎯 核心问题**：如何建立完善的安全监控体系？
+
+**安全监控策略**：
+1. **实时监控**：监控系统访问、异常行为、攻击尝试
+2. **日志分析**：分析安全日志，识别威胁模式
+3. **威胁情报**：集成威胁情报，提前预警
+4. **自动化响应**：自动响应常见安全事件
+
+**监控工具选择**：
+- **SIEM系统**：集中化安全信息管理
+- **EDR系统**：终端检测和响应
+- **网络监控**：网络流量分析和异常检测
+- **应用监控**：应用层安全监控和异常检测
+
+**💡 面试加分点**：
+- 提到具体工具："使用Azure Sentinel进行安全监控，集成威胁情报和自动化响应"
+- 展示监控思维："建立完整的安全监控体系，包括实时监控、日志分析和自动化响应"
+
+### 2.2 安全事件响应
+
+**🎯 核心问题**：如何有效响应安全事件？
+
+**事件响应流程**：
+1. **事件检测**：自动或手动检测安全事件
+2. **事件分类**：根据严重程度分类事件
+3. **事件调查**：深入调查事件原因和影响
+4. **事件响应**：采取相应措施处理事件
+5. **事件恢复**：恢复正常运营状态
+6. **事件总结**：总结经验教训，改进防护措施
+
+**自动化响应策略**：
+- **账户锁定**：检测到异常登录时自动锁定账户
+- **IP封禁**：检测到攻击时自动封禁IP地址
+- **服务降级**：检测到攻击时自动降级服务
+- **告警通知**：自动通知相关人员处理安全事件
+
+**💡 面试加分点**：
+- 提到具体实现："建立安全事件响应团队，制定详细的响应流程和自动化策略"
+- 展示响应能力："定期进行安全演练，提高团队的安全事件响应能力"
 
 ---
 
 ## 🎯 面试重点总结
 
-### 高频技术问题
+### 3.1 高频技术问题
 
-**Q1: 如何防止SQL注入攻击？**
+**Web安全核心理解**
+- **常见攻击**：理解SQL注入、XSS、CSRF等常见攻击原理
+- **防护策略**：掌握各种攻击的防护策略和实现方法
+- **安全编码**：能够编写安全的代码，避免常见安全漏洞
+- **安全测试**：能够进行安全测试，识别安全漏洞
 
-**🎯 标准答案**：
-- 使用参数化查询或存储过程
-- 使用ORM框架如Entity Framework
-- 实现输入验证和过滤
-- 使用最小权限原则
-- 定期安全审计和测试
+**身份认证和授权**
+- **认证机制**：理解各种身份认证机制和实现方法
+- **授权策略**：掌握基于角色和策略的授权实现
+- **会话管理**：理解安全的会话管理和Token管理
+- **多因素认证**：掌握多因素认证的实现方法
 
-**💡 面试加分点**：提到"我会使用多层防护策略，结合输入验证、参数化查询和权限控制"
+**数据安全保护**
+- **数据加密**：理解数据加密的原理和实现方法
+- **数据脱敏**：掌握数据脱敏的技术和策略
+- **访问控制**：理解基于角色的数据访问控制
+- **审计日志**：掌握安全审计日志的实现方法
 
-**Q2: 如何实现安全的身份认证和授权？**
+### 3.2 架构设计问题
 
-**🎯 标准答案**：
-- 使用JWT令牌进行无状态认证
-- 实现基于角色的访问控制(RBAC)
-- 使用HTTPS保护数据传输
-- 实现多因素认证(MFA)
-- 定期轮换密钥和令牌
+**安全架构设计**
+- **纵深防御**：设计多层安全防护架构
+- **安全监控**：设计完善的安全监控和告警体系
+- **事件响应**：设计安全事件的检测和响应机制
+- **合规要求**：满足各种安全合规要求
 
-**💡 面试加分点**：提到"我会实现JWT令牌的自动刷新机制，并监控异常登录行为"
+**技术选型设计**
+- **安全工具**：选择合适的安全防护和监控工具
+- **加密算法**：选择合适的加密算法和密钥管理方案
+- **认证方案**：选择合适的身份认证和授权方案
+- **监控方案**：选择合适的安全监控和响应方案
 
-### 实战经验展示
+### 3.3 实战案例分析
 
-**项目案例**：高安全电商系统安全加固
+**电商系统安全案例**
+- **用户保护**：如何保护用户账户和支付信息
+- **数据保护**：如何保护用户隐私和交易数据
+- **攻击防护**：如何防护各种网络攻击
+- **合规要求**：如何满足电商安全合规要求
 
-**技术挑战**：系统遭受恶意攻击，用户数据泄露，系统被勒索软件加密
-
-**解决方案**：
-1. 实现多层安全防护，包括输入验证、参数化查询、权限控制
-2. 使用JWT令牌和RBAC实现安全的身份认证和授权
-3. 实现数据加密和脱敏，保护用户敏感信息
-4. 建立完整的审计日志和监控系统
-5. 实施安全培训和定期安全测试
-
-**安全提升**：系统安全等级从基础提升到银行级，成功防御多次攻击尝试
-
----
-
-## 🎉 总结：小张的成功之路
-
-> 🏆 **回到小张的故事**：通过应用安全防护技术，小张的电商系统成功解决了安全问题！
-> 
-> - **系统安全**：从基础安全提升到银行级安全标准
-> - **数据保护**：用户数据得到全面保护，符合GDPR要求
-> - **攻击防护**：成功防御多次恶意攻击和勒索软件
-> - **技术成长**：小张成为了团队的安全专家
-> 
-> 💡 **你的收获**：通过本章学习，你已经掌握了：
-> - .NET安全防护的核心策略和最佳实践
-> - 身份认证、授权、数据保护等关键技术
-> - 面试中常见问题的标准答案和加分点
-> - 实际项目中的安全防护和架构设计能力
-> 
-> 🚀 **下一步行动**：继续学习其他安全技术，或者在实际项目中应用这些知识！
-> 
-> 记住：**安全防护不是为了增加复杂度，而是为了保护用户，建立信任！**
+**金融系统安全案例**
+- **交易安全**：如何保护金融交易安全
+- **风控系统**：如何建立风险控制系统
+- **合规要求**：如何满足金融安全合规要求
+- **审计要求**：如何满足金融审计要求
 
 ---
 
-## 总结
+## 🏆 总结与展望
 
-.NET安全防护是构建可靠应用的关键技术，要真正掌握安全防护，需要：
+.NET应用安全是一个复杂的系统工程，要真正掌握安全防护，需要：
 
-1. **深入理解安全威胁**：掌握常见攻击方式和防护策略
-2. **掌握身份认证**：理解JWT、OAuth、多因素认证等机制
-3. **掌握授权控制**：理解RBAC、ABAC、最小权限等原则
-4. **掌握数据保护**：理解加密、签名、脱敏等技术
-5. **实战应用能力**：能够将理论知识应用到实际项目中
+1. **深入理解安全原理**：理解各种攻击原理和防护策略
+2. **掌握安全技术**：掌握身份认证、授权、加密等安全技术
+3. **建立安全体系**：建立完整的安全防护和监控体系
+4. **平衡各种因素**：在安全性、可用性、性能之间找到平衡
+5. **持续学习改进**：关注安全威胁发展，持续改进防护措施
 
-只有深入理解这些技术，才能在面试中展现出真正的技术深度，也才能在项目中构建出安全可靠的应用系统。
+**💡 面试加分点**：
+- 提到技术趋势："关注最新的安全威胁和防护技术，如零信任架构、AI安全等"
+- 展示安全视野："了解云原生安全、DevSecOps等新兴安全理念和实践"
+
+只有深入理解安全防护的原理和方法，才能在面试中展现出真正的技术深度，也才能在项目中构建安全可靠的系统。记住，安全不是一蹴而就的，而是需要持续关注和改进的过程！
