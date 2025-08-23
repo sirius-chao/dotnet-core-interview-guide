@@ -37,14 +37,16 @@
 
 ---
 
-## ❓ 面试高频问题
+## ❓ 面试高频问题与深度解析
 
 ### Q1: 单例模式的线程安全问题如何解决？
 
 **面试官想了解什么**：你对设计模式实现细节的理解，以及线程安全编程的能力。
 
-**🎯 标准答案**：
+**单例模式线程安全核心原理**：
+单例模式在多线程环境下的核心问题是**竞态条件**：多个线程可能同时检查实例是否为空，导致创建多个实例。
 
+**线程安全实现方案对比**：
 | 实现方式 | 线程安全性 | 性能 | 实现复杂度 | 推荐指数 |
 |----------|------------|------|------------|----------|
 | **双重检查锁定** | ✅ 安全 | 高 | 中等 | ⭐⭐⭐⭐ |
@@ -52,11 +54,11 @@
 | **静态构造函数** | ✅ 安全 | 最高 | 低 | ⭐⭐⭐⭐ |
 | **依赖注入单例** | ✅ 安全 | 高 | 低 | ⭐⭐⭐⭐⭐ |
 
-**💡 面试加分点**：提到"我会使用性能分析工具测量不同单例实现的性能差异，选择最适合的实现方式：
-- **性能测试工具**：使用BenchmarkDotNet进行基准测试，测量内存分配和GC压力
-- **测试场景**：高并发创建、长时间运行、内存泄漏检测
-- **实现对比**：Lazy<T> vs 双重检查锁定 vs 静态构造函数
-- **选择标准**：延迟初始化需求、线程安全要求、性能要求"
+**核心实现原理**：
+1. **双重检查锁定**：使用volatile关键字和双重检查避免不必要的锁定
+2. **Lazy<T>**：利用.NET框架内置的线程安全延迟初始化机制
+3. **静态构造函数**：利用CLR保证静态构造函数的线程安全执行
+4. **依赖注入**：利用容器管理单例生命周期，避免手动实现
 
 **代码实现**：
 ```csharp
@@ -110,29 +112,40 @@ public class SingletonService
 
 **面试官想了解什么**：你对设计原则的理解，以及在实际项目中的判断能力。
 
-**🎯 标准答案**：
-- 遵循YAGNI原则（You Aren't Gonna Need It）
-- 从简单实现开始，根据需求演进
-- 考虑维护成本和团队理解能力
-- 使用代码审查和重构保持代码质量
+**过度设计的核心问题**：
+过度使用设计模式会导致代码复杂化，增加理解和维护成本，违背了"简单即美"的设计原则。
 
-**💡 面试加分点**：提到"我会定期进行代码审查，识别过度设计的问题，并指导团队进行重构：
-- **审查工具**：使用SonarQube、ReSharper进行代码质量分析
-- **审查重点**：过度抽象、不必要的接口、复杂的继承层次
-- **重构策略**：提取公共方法、简化类结构、移除死代码
-- **团队培训**：建立代码规范、分享重构经验、定期技术分享"
+**避免过度设计的原则**：
+1. **YAGNI原则**：You Aren't Gonna Need It，不要为未来可能的需求过度设计
+2. **KISS原则**：Keep It Simple, Stupid，保持简单，避免不必要的复杂性
+3. **渐进式设计**：从简单实现开始，根据实际需求演进架构
+4. **团队能力匹配**：考虑团队的理解能力和维护成本
+
+**设计模式使用策略**：
+- **需求驱动**：只有在真正需要时才引入设计模式
+- **简单优先**：优先考虑简单直接的解决方案
+- **重构演进**：通过重构逐步引入设计模式，而不是预先设计
+- **代码审查**：定期审查代码，识别和消除过度设计
+
+**具体实践方法**：
+1. **代码审查工具**：使用SonarQube、ReSharper进行代码质量分析
+2. **审查重点**：过度抽象、不必要的接口、复杂的继承层次
+3. **重构策略**：提取公共方法、简化类结构、移除死代码
+4. **团队培训**：建立代码规范、分享重构经验、定期技术分享
+
+**💡 面试加分点**：
+- 提到具体工具："使用SonarQube进行代码质量分析，设置复杂度阈值告警"
+- 展示实践经验："建立代码审查清单，重点关注过度抽象和复杂继承"
+- 展示团队管理："定期组织重构工作坊，分享过度设计的识别和解决方法"
 
 ---
 
-## 🔍 深度解析：设计模式的核心原理
+### Q3: 设计模式如何提升代码质量？
 
-> 🤔 **深度思考**：现在让我们回到小红的电商系统问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么使用策略模式能解决支付方式扩展的问题吗？"
-> 
-> 这个问题考察的是你对设计模式本质的理解，而不仅仅是模式的使用。
+**面试官想了解什么**：你对设计模式本质的理解，以及在实际项目中的应用能力。
 
-### 🎯 核心问题：设计模式如何提升代码质量？
+**设计模式提升代码质量的核心原理**：
+设计模式通过提供经过验证的解决方案，帮助解决常见的软件设计问题，提升代码的可维护性、可扩展性和可测试性。
 
 **传统硬编码方式的问题**：
 ```
@@ -152,6 +165,83 @@ public class SingletonService
 - **可维护性**：新增支付方式只需添加新策略，不修改现有代码
 - **可测试性**：每个策略可以独立测试，提高测试覆盖率
 - **可扩展性**：遵循开闭原则，对扩展开放，对修改关闭
+- **可读性**：代码结构清晰，职责分离明确
+
+---
+
+### Q4: 设计模式对性能有什么影响？如何优化？
+
+**面试官想了解什么**：你对设计模式性能影响的理解，以及性能优化的能力。
+
+**设计模式性能影响分析**：
+设计模式在提供代码质量的同时，也会带来一定的性能开销。理解这些开销并学会优化是高级开发者的重要技能。
+
+**性能开销分析**：
+| 设计模式 | 内存开销 | CPU开销 | 适用场景 | 优化建议 |
+|----------|----------|----------|----------|----------|
+| **单例模式** | 最低 | 最低 | 全局共享资源 | 使用Lazy<T>延迟初始化 |
+| **工厂模式** | 低 | 低 | 对象创建复杂 | 缓存工厂实例，避免重复创建 |
+| **策略模式** | 低 | 低 | 算法变化频繁 | 使用字典查找，避免if-else链 |
+| **装饰器模式** | 中等 | 中等 | 功能组合 | 控制装饰器层数，避免过度包装 |
+| **观察者模式** | 中等 | 中等 | 事件通知 | 使用弱引用，避免内存泄漏 |
+
+**性能优化策略**：
+```csharp
+// 使用对象池减少对象创建开销
+public class PaymentStrategyPool
+{
+    private readonly ConcurrentQueue<IPaymentStrategy> _pool;
+    private readonly Func<IPaymentStrategy> _factory;
+    
+    public PaymentStrategyPool(Func<IPaymentStrategy> factory, int initialSize = 10)
+    {
+        _factory = factory;
+        _pool = new ConcurrentQueue<IPaymentStrategy>();
+        
+        // 预创建对象
+        for (int i = 0; i < initialSize; i++)
+        {
+            _pool.Enqueue(_factory());
+        }
+    }
+    
+    public IPaymentStrategy Get()
+    {
+        if (_pool.TryDequeue(out var strategy))
+        {
+            return strategy;
+        }
+        return _factory();
+    }
+    
+    public void Return(IPaymentStrategy strategy)
+    {
+        _pool.Enqueue(strategy);
+    }
+}
+
+// 使用缓存优化策略查找
+public class CachedPaymentStrategyFactory
+{
+    private readonly ConcurrentDictionary<string, IPaymentStrategy> _cache = new();
+    private readonly Func<string, IPaymentStrategy> _factory;
+    
+    public CachedPaymentStrategyFactory(Func<string, IPaymentStrategy> factory)
+    {
+        _factory = factory;
+    }
+    
+    public IPaymentStrategy CreateStrategy(string paymentType)
+    {
+        return _cache.GetOrAdd(paymentType, _factory);
+    }
+}
+```
+
+**💡 面试加分点**：
+- 提到具体优化："使用对象池减少GC压力，使用缓存避免重复创建策略对象"
+- 展示性能意识："在引入设计模式时考虑性能影响，使用性能测试验证优化效果"
+- 提到具体工具："使用BenchmarkDotNet测量设计模式的性能开销，使用dotMemory分析内存使用"
 
 ---
 
@@ -373,74 +463,6 @@ public class PaymentProcessor
                        │ └─ 支付宝策略    │
                        └─────────────────┘
     优势：易于维护、易于扩展、易于测试
-```
-
----
-
-## 📊 性能优化深度指南
-
-### 设计模式性能影响
-
-**性能开销分析**：
-| 设计模式 | 内存开销 | CPU开销 | 适用场景 | 优化建议 |
-|----------|----------|----------|----------|----------|
-| **单例模式** | 最低 | 最低 | 全局共享资源 | 使用Lazy<T>延迟初始化 |
-| **工厂模式** | 低 | 低 | 对象创建复杂 | 缓存工厂实例，避免重复创建 |
-| **策略模式** | 低 | 低 | 算法变化频繁 | 使用字典查找，避免if-else链 |
-| **装饰器模式** | 中等 | 中等 | 功能组合 | 控制装饰器层数，避免过度包装 |
-| **观察者模式** | 中等 | 中等 | 事件通知 | 使用弱引用，避免内存泄漏 |
-
-**性能优化策略**：
-```csharp
-// 使用对象池减少对象创建开销
-public class PaymentStrategyPool
-{
-    private readonly ConcurrentQueue<IPaymentStrategy> _pool;
-    private readonly Func<IPaymentStrategy> _factory;
-    
-    public PaymentStrategyPool(Func<IPaymentStrategy> factory, int initialSize = 10)
-    {
-        _factory = factory;
-        _pool = new ConcurrentQueue<IPaymentStrategy>();
-        
-        // 预创建对象
-        for (int i = 0; i < initialSize; i++)
-        {
-            _pool.Enqueue(_factory());
-        }
-    }
-    
-    public IPaymentStrategy Get()
-    {
-        if (_pool.TryDequeue(out var strategy))
-        {
-            return strategy;
-        }
-        return _factory();
-    }
-    
-    public void Return(IPaymentStrategy strategy)
-    {
-        _pool.Enqueue(strategy);
-    }
-}
-
-// 使用缓存优化策略查找
-public class CachedPaymentStrategyFactory
-{
-    private readonly ConcurrentDictionary<string, IPaymentStrategy> _cache = new();
-    private readonly Func<string, IPaymentStrategy> _factory;
-    
-    public CachedPaymentStrategyFactory(Func<string, IPaymentStrategy> factory)
-    {
-        _factory = factory;
-    }
-    
-    public IPaymentStrategy CreateStrategy(string paymentType)
-    {
-        return _cache.GetOrAdd(paymentType, _factory);
-    }
-}
 ```
 
 ---
