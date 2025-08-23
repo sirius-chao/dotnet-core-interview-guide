@@ -235,14 +235,14 @@ jobs:
 // 使用TestServer进行API测试
 [Test]
 public async Task GetUser_ShouldReturnUser_WhenUserExists()
-{
-    // Arrange
+    {
+        // Arrange
     var client = _factory.CreateClient();
-    
-    // Act
+        
+        // Act
     var response = await client.GetAsync("/api/users/1");
-    
-    // Assert
+        
+        // Assert
     response.EnsureSuccessStatusCode();
     var user = await response.Content.ReadFromJsonAsync<User>();
     Assert.That(user.Name, Is.EqualTo("John"));

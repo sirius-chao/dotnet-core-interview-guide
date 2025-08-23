@@ -420,7 +420,7 @@ public class EncryptionService
     public string Decrypt(string cipherText)
     {
         var fullCipher = Convert.FromBase64String(cipherText);
-        
+            
         using var aes = Aes.Create();
         aes.Key = Convert.FromBase64String(_key);
         
