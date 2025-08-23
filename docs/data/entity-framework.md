@@ -109,13 +109,74 @@ public async Task<PagedResult<ProductDto>> GetProductsAsync(int page, int pageSi
 
 **面试官想了解什么**：你对EF Core查询优化的深度理解，以及解决常见问题的能力。
 
-**🎯 标准答案**：
-- 使用Include()预加载关联数据
-- 使用投影查询只选择需要的字段
-- 使用批量查询减少数据库往返
-- 使用缓存避免重复查询
+**📚 问题背景**：
+N+1 查询问题是指：先查出 N 条主表记录，再为每条记录各发 1 次子表查询，导致 N+1 次数据库往返。这是EF Core中常见的性能陷阱。
 
-**💡 面试加分点**：提到"我会使用EF Core的查询分析器，监控生成的SQL语句数量，识别N+1查询问题"
+**🎯 标准答案**：
+
+**核心解决策略**：
+1. **预加载关联数据**：使用 `Include()` 和 `ThenInclude()` 一次性取齐需要的数据
+2. **投影查询优化**：只选择需要的字段，减少数据传输
+3. **批量查询**：对列表场景，先聚合主键，再用 `WHERE IN` 一次取子表
+4. **关闭Lazy Loading**：谨慎使用延迟加载，避免意外触发查询
+5. **防止笛卡尔积**：对多集合使用 `AsSplitQuery()`，结合分页和过滤
+
+**具体实现**：
+```csharp
+// 避免N+1查询的示例
+public async Task<List<OrderDto>> GetOrdersWithDetailsAsync()
+{
+    // 使用Include预加载关联数据，避免N+1
+    var orders = await _context.Orders
+        .Include(o => o.OrderItems)           // 预加载订单项
+        .Include(o => o.Customer)             // 预加载客户信息
+        .Include(o => o.ShippingAddress)      // 预加载地址信息
+        .AsNoTracking()                       // 只读查询，提升性能
+        .Select(o => new OrderDto             // 投影查询，只取需要的字段
+        {
+            Id = o.Id,
+            OrderNumber = o.OrderNumber,
+            TotalAmount = o.TotalAmount,
+            CustomerName = o.Customer.Name,
+            Items = o.OrderItems.Select(i => new OrderItemDto
+            {
+                ProductId = i.ProductId,
+                Quantity = i.Quantity,
+                Price = i.Price
+            }).ToList()
+        })
+        .ToListAsync();
+    
+    return orders;
+}
+
+// 批量查询优化
+public async Task<List<ProductDto>> GetProductsWithCategoriesAsync(int[] categoryIds)
+{
+    // 先查询产品ID列表
+    var productIds = await _context.Products
+        .Where(p => categoryIds.Contains(p.CategoryId))
+        .Select(p => p.Id)
+        .ToListAsync();
+    
+    // 批量查询产品详情和分类信息
+    var products = await _context.Products
+        .Where(p => productIds.Contains(p.Id))
+        .Include(p => p.Category)
+        .Select(p => new ProductDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Price = p.Price,
+            CategoryName = p.Category.Name
+        })
+        .ToListAsync();
+    
+    return products;
+}
+```
+
+**💡 面试加分点**：提到"我会使用Include/ThenInclude预加载关联数据，用投影查询减少数据传输，对列表场景实现批量查询，用AsSplitQuery防止笛卡尔积，通过ToQueryString()和MiniProfiler监控SQL数量，结合缓存和编译查询优化热点读取"
 
 ---
 

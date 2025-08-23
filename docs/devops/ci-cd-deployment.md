@@ -333,7 +333,7 @@ stages:
               command: 'publish'
               projects: '**/*.csproj'
               arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)/publish'
-              
+          
           - task: AzureWebApp@1
             inputs:
               azureSubscription: 'MyAzureSubscription'
@@ -358,7 +358,7 @@ stages:
               command: 'publish'
               projects: '**/*.csproj'
               arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)/publish'
-              
+          
           - task: AzureWebApp@1
             inputs:
               azureSubscription: 'MyAzureSubscription'
