@@ -207,82 +207,244 @@
   3. **缓存策略**：实现有效的缓存策略
   4. **算法优化**：优化核心算法
 
-**可维护性原则深度分析**：
-- **模块化设计**：
-  - **高内聚**：模块内部功能紧密相关
-  - **低耦合**：模块间依赖关系简单
-  - **接口稳定**：保持接口的稳定性
-  - **版本管理**：管理接口的版本
+## 🔍 深入面试问题
 
-- **可测试性**：
-  - **单元测试**：支持单元测试
-  - **集成测试**：支持集成测试
-  - **模拟测试**：支持模拟测试
-  - **性能测试**：支持性能测试
+### Q3: 如何设计一个高并发的系统架构？
+
+**面试官想了解什么**：你对系统架构设计的深入理解。
+
+**🎯 标准答案**：
+
+**高并发架构设计策略**：
+1. **水平扩展**：使用负载均衡、服务集群、数据分片
+2. **异步处理**：使用消息队列、异步编程、事件驱动
+3. **缓存策略**：多级缓存、分布式缓存、缓存预热
+4. **数据库优化**：读写分离、分库分表、连接池
+
+**架构组件选择**：
+| 组件类型 | 技术方案 | 适用场景 | 性能提升 |
+|----------|----------|----------|----------|
+| **负载均衡** | Nginx、HAProxy | 高并发访问 | 2-10倍 |
+| **消息队列** | RabbitMQ、Kafka | 异步处理 | 5-20倍 |
+| **缓存系统** | Redis、Memcached | 数据缓存 | 10-100倍 |
+| **数据库** | 读写分离、分库分表 | 数据存储 | 5-50倍 |
+
+**具体实现**：
+```csharp
+// 高并发系统架构示例
+public class HighConcurrencySystem
+{
+    private readonly ILoadBalancer _loadBalancer;
+    private readonly IMessageQueue _messageQueue;
+    private readonly ICacheService _cacheService;
+    private readonly IDatabaseService _databaseService;
+    
+    // 异步处理订单
+    public async Task<OrderResult> ProcessOrderAsync(OrderRequest request)
+    {
+        try
+        {
+            // 1. 缓存检查
+            var cacheKey = $"Order_{request.OrderId}";
+            if (_cacheService.TryGet(cacheKey, out Order cachedOrder))
+            {
+                return new OrderResult { Success = true, Order = cachedOrder };
+            }
+            
+            // 2. 异步处理
+            var message = new OrderMessage
+            {
+                OrderId = request.OrderId,
+                CustomerId = request.CustomerId,
+                Items = request.Items,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            await _messageQueue.PublishAsync("OrderProcessing", message);
+            
+            // 3. 返回处理中状态
+            return new OrderResult { Success = true, Status = "Processing" };
+        }
+        catch (Exception ex)
+        {
+            // 记录错误日志
+            _logger.LogError(ex, "Failed to process order {OrderId}", request.OrderId);
+            return new OrderResult { Success = false, Error = "Processing failed" };
+        }
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会设计多级缓存策略，使用异步消息队列处理高并发请求，实现负载均衡和服务集群，通过数据分片和读写分离提升系统性能"
 
 ## 2. 大型系统架构深度设计
 
-### 2.1 分层架构深度应用
+---
 
-**分层架构的设计哲学**
-分层架构是大型系统的基础：
+### Q4: 如何设计一个可扩展的系统架构？
 
-**分层设计深度策略**：
-- **关注点分离**：
-  - **业务逻辑层**：专注于业务逻辑的实现
-  - **数据访问层**：专注于数据的访问和管理
-  - **表示层**：专注于用户界面的展示
-  - **基础设施层**：专注于技术基础设施
+**面试官想了解什么**：你对系统扩展性的深入理解。
 
-- **依赖管理**：
-  1. **依赖方向**：控制依赖的方向
-  2. **依赖注入**：使用依赖注入管理依赖
-  3. **接口隔离**：定义精确的接口
-  4. **依赖倒置**：依赖抽象而不是具体实现
+**🎯 标准答案**：
 
-**分层优化深度策略**：
-- **性能优化**：
-  - **异步处理**：使用异步处理提高性能
-  - **缓存策略**：实现有效的缓存策略
-  - **批量处理**：使用批量处理减少开销
-  - **连接池**：使用连接池优化资源使用
+**可扩展性设计原则**：
+1. **水平扩展**：支持添加更多节点和服务实例
+2. **垂直扩展**：支持增加单个节点的资源
+3. **功能扩展**：支持添加新功能而不影响现有功能
+4. **数据扩展**：支持数据量增长和分片
 
-- **可维护性优化**：
-  - **代码组织**：优化代码组织
-  - **接口设计**：优化接口设计
-  - **文档完善**：完善技术文档
-  - **代码规范**：制定代码规范
+**扩展策略**：
+| 扩展类型 | 实现方式 | 适用场景 | 复杂度 |
+|----------|----------|----------|--------|
+| **水平扩展** | 服务集群、负载均衡 | 高并发、大数据量 | 中等 |
+| **垂直扩展** | 资源升级、性能优化 | 计算密集型、资源不足 | 低 |
+| **功能扩展** | 插件架构、微服务 | 功能复杂、团队协作 | 高 |
+| **数据扩展** | 分库分表、分布式存储 | 数据量大、查询复杂 | 高 |
 
-### 2.2 微服务架构深度应用
+**具体实现**：
+```csharp
+// 可扩展系统架构示例
+public class ScalableSystem
+{
+    private readonly IServiceRegistry _serviceRegistry;
+    private readonly ILoadBalancer _loadBalancer;
+    private readonly IDataSharding _dataSharding;
+    
+    // 服务注册和发现
+    public async Task RegisterServiceAsync(ServiceInfo serviceInfo)
+    {
+        await _serviceRegistry.RegisterAsync(serviceInfo);
+        
+        // 自动健康检查
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                try
+                {
+                    var isHealthy = await CheckServiceHealthAsync(serviceInfo);
+                    await _serviceRegistry.UpdateHealthAsync(serviceInfo.Id, isHealthy);
+                    
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Health check failed for service {ServiceId}", serviceInfo.Id);
+                }
+            }
+        });
+    }
+    
+    // 数据分片策略
+    public async Task<T> GetDataWithShardingAsync<T>(string key, Func<string, Task<T>> dataAccessor)
+    {
+        var shardKey = _dataSharding.GetShardKey(key);
+        var shard = await _dataSharding.GetShardAsync(shardKey);
+        
+        return await dataAccessor(shard.ConnectionString);
+    }
+}
+```
 
-**微服务架构的设计哲学**
-微服务架构是大型系统的重要架构模式：
+**💡 面试加分点**：提到"我会设计插件架构支持功能扩展，使用服务注册发现实现水平扩展，通过数据分片策略支持数据扩展，建立自动扩缩容机制"
 
-**服务拆分深度策略**：
-- **业务驱动拆分**：
-  - **业务边界**：基于业务边界拆分服务
-  - **数据边界**：基于数据边界拆分服务
-  - **团队边界**：基于团队边界拆分服务
-  - **技术边界**：基于技术边界拆分服务
+---
 
-- **拆分原则**：
-  1. **单一职责**：每个服务只负责一个业务功能
-  2. **高内聚**：服务内部功能紧密相关
-  3. **低耦合**：服务间依赖关系简单
-  4. **可独立部署**：每个服务可以独立部署
+### Q5: 如何设计一个高可用的系统架构？
 
-**微服务治理深度策略**：
-- **服务发现与注册**：
-  - **服务注册**：实现服务注册机制
-  - **服务发现**：实现服务发现机制
-  - **健康检查**：实现健康检查机制
-  - **负载均衡**：实现负载均衡机制
+**面试官想了解什么**：你对系统可用性的深入理解。
 
-- **服务监控与告警**：
-  - **性能监控**：监控服务性能指标
-  - **健康监控**：监控服务健康状态
-  - **异常监控**：监控服务异常情况
-  - **告警机制**：实现告警机制
+**🎯 标准答案**：
+
+**高可用设计策略**：
+1. **冗余设计**：多实例部署、多机房部署
+2. **故障转移**：自动故障检测、快速切换
+3. **熔断机制**：服务熔断、降级策略
+4. **监控告警**：实时监控、快速响应
+
+**可用性保障**：
+| 保障措施 | 实现方式 | 可用性提升 | 成本 |
+|----------|----------|------------|------|
+| **多实例部署** | 服务集群、负载均衡 | 99.9% → 99.99% | 中等 |
+| **多机房部署** | 异地多活、数据同步 | 99.99% → 99.999% | 高 |
+| **自动故障转移** | 健康检查、自动切换 | 快速恢复 | 中等 |
+| **熔断降级** | 服务熔断、降级策略 | 避免级联故障 | 低 |
+
+**具体实现**：
+```csharp
+// 高可用系统架构示例
+public class HighAvailabilitySystem
+{
+    private readonly IHealthChecker _healthChecker;
+    private readonly IFailoverManager _failoverManager;
+    private readonly ICircuitBreaker _circuitBreaker;
+    
+    // 健康检查
+    public async Task<bool> CheckServiceHealthAsync(string serviceId)
+    {
+        try
+        {
+            var healthInfo = await _healthChecker.CheckHealthAsync(serviceId);
+            
+            // 检查关键指标
+            var isHealthy = healthInfo.CpuUsage < 80 &&
+                           healthInfo.MemoryUsage < 85 &&
+                           healthInfo.ResponseTime < TimeSpan.FromSeconds(2) &&
+                           healthInfo.ErrorRate < 0.01;
+            
+            return isHealthy;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Health check failed for service {ServiceId}", serviceId);
+            return false;
+        }
+    }
+    
+    // 故障转移
+    public async Task<T> ExecuteWithFailoverAsync<T>(Func<Task<T>> operation)
+    {
+        var primaryInstance = await _failoverManager.GetPrimaryInstanceAsync();
+        
+        try
+        {
+            return await operation();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Primary instance failed, switching to backup");
+            
+            // 切换到备用实例
+            var backupInstance = await _failoverManager.GetBackupInstanceAsync();
+            return await ExecuteOnInstanceAsync(backupInstance, operation);
+        }
+    }
+    
+    // 熔断器模式
+    public async Task<T> ExecuteWithCircuitBreakerAsync<T>(string operation, Func<Task<T>> func)
+    {
+        if (_circuitBreaker.IsOpen(operation))
+        {
+            // 熔断器开启，执行降级策略
+            return await ExecuteFallbackAsync<T>(operation);
+        }
+        
+        try
+        {
+            var result = await func();
+            _circuitBreaker.OnSuccess(operation);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _circuitBreaker.OnFailure(operation);
+            throw;
+        }
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会实现多实例冗余部署，使用健康检查和自动故障转移，通过熔断器模式防止级联故障，建立完整的监控告警体系"
 
 ## 3. 数据架构深度设计
 
@@ -520,14 +682,466 @@
 - **消息系统**：如何设计消息系统
 - **推荐系统**：如何设计推荐系统
 
-## 总结
+## 🔍 深入面试问题
 
-系统设计是一个系统性的工程，要真正掌握系统设计，需要：
+### Q3: 如何设计一个高并发的系统架构？
 
-1. **深入理解设计原理**：理解系统设计的核心原理和原则
-2. **掌握架构模式**：掌握各种架构模式的应用
-3. **理解性能优化**：理解性能优化的各种策略
-4. **掌握安全设计**：掌握安全架构的设计方法
-5. **实践架构设计**：在实践中应用系统设计原则
+**面试官想了解什么**：你对系统架构设计的深入理解。
 
-只有深入理解这些原理，才能在面试中展现出真正的技术深度，也才能在项目中做出正确的系统设计决策。
+**🎯 标准答案**：
+
+**高并发架构设计策略**：
+1. **水平扩展**：使用负载均衡、服务集群、数据分片
+2. **异步处理**：使用消息队列、异步编程、事件驱动
+3. **缓存策略**：多级缓存、分布式缓存、缓存预热
+4. **数据库优化**：读写分离、分库分表、连接池
+
+**架构组件选择**：
+| 组件类型 | 技术方案 | 适用场景 | 性能提升 |
+|----------|----------|----------|----------|
+| **负载均衡** | Nginx、HAProxy | 高并发访问 | 2-10倍 |
+| **消息队列** | RabbitMQ、Kafka | 异步处理 | 5-20倍 |
+| **缓存系统** | Redis、Memcached | 数据缓存 | 10-100倍 |
+| **数据库** | 读写分离、分库分表 | 数据存储 | 5-50倍 |
+
+**具体实现**：
+```csharp
+// 高并发系统架构示例
+public class HighConcurrencySystem
+{
+    private readonly ILoadBalancer _loadBalancer;
+    private readonly IMessageQueue _messageQueue;
+    private readonly ICacheService _cacheService;
+    private readonly IDatabaseService _databaseService;
+    
+    // 异步处理订单
+    public async Task<OrderResult> ProcessOrderAsync(OrderRequest request)
+    {
+        try
+        {
+            // 1. 缓存检查
+            var cacheKey = $"Order_{request.OrderId}";
+            if (_cacheService.TryGet(cacheKey, out Order cachedOrder))
+            {
+                return new OrderResult { Success = true, Order = cachedOrder };
+            }
+            
+            // 2. 异步处理
+            var message = new OrderMessage
+            {
+                OrderId = request.OrderId,
+                CustomerId = request.CustomerId,
+                Items = request.Items,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            await _messageQueue.PublishAsync("OrderProcessing", message);
+            
+            // 3. 返回处理中状态
+            return new OrderResult { Success = true, Status = "Processing" };
+        }
+        catch (Exception ex)
+        {
+            // 记录错误日志
+            _logger.LogError(ex, "Failed to process order {OrderId}", request.OrderId);
+            return new OrderResult { Success = false, Error = "Processing failed" };
+        }
+    }
+    
+    // 负载均衡策略
+    public async Task<ServiceInstance> GetServiceInstanceAsync(string serviceName)
+    {
+        var instances = await _loadBalancer.GetHealthyInstancesAsync(serviceName);
+        
+        // 轮询策略
+        var instance = instances[_currentIndex % instances.Count];
+        _currentIndex = (_currentIndex + 1) % instances.Count;
+        
+        return instance;
+    }
+    
+    // 缓存策略
+    public async Task<T> GetWithCacheAsync<T>(string key, Func<Task<T>> factory)
+    {
+        if (_cacheService.TryGet(key, out T cachedValue))
+        {
+            return cachedValue;
+        }
+        
+        var value = await factory();
+        _cacheService.Set(key, value, TimeSpan.FromMinutes(30));
+        
+        return value;
+    }
+}
+
+// 负载均衡器接口
+public interface ILoadBalancer
+{
+    Task<List<ServiceInstance>> GetHealthyInstancesAsync(string serviceName);
+    Task<ServiceInstance> GetNextInstanceAsync(string serviceName);
+}
+
+// 消息队列接口
+public interface IMessageQueue
+{
+    Task PublishAsync<T>(string topic, T message);
+    Task<T> ConsumeAsync<T>(string topic);
+}
+```
+
+**💡 面试加分点**：提到"我会设计多级缓存策略，使用异步消息队列处理高并发请求，实现负载均衡和服务集群，通过数据分片和读写分离提升系统性能"
+
+---
+
+### Q4: 如何设计一个可扩展的系统架构？
+
+**面试官想了解什么**：你对系统扩展性的深入理解。
+
+**🎯 标准答案**：
+
+**可扩展性设计原则**：
+1. **水平扩展**：支持添加更多节点和服务实例
+2. **垂直扩展**：支持增加单个节点的资源
+3. **功能扩展**：支持添加新功能而不影响现有功能
+4. **数据扩展**：支持数据量增长和分片
+
+**扩展策略**：
+| 扩展类型 | 实现方式 | 适用场景 | 复杂度 |
+|----------|----------|----------|--------|
+| **水平扩展** | 服务集群、负载均衡 | 高并发、大数据量 | 中等 |
+| **垂直扩展** | 资源升级、性能优化 | 计算密集型、资源不足 | 低 |
+| **功能扩展** | 插件架构、微服务 | 功能复杂、团队协作 | 高 |
+| **数据扩展** | 分库分表、分布式存储 | 数据量大、查询复杂 | 高 |
+
+**具体实现**：
+```csharp
+// 可扩展系统架构示例
+public class ScalableSystem
+{
+    private readonly IServiceRegistry _serviceRegistry;
+    private readonly ILoadBalancer _loadBalancer;
+    private readonly IDataSharding _dataSharding;
+    
+    // 服务注册和发现
+    public async Task RegisterServiceAsync(ServiceInfo serviceInfo)
+    {
+        await _serviceRegistry.RegisterAsync(serviceInfo);
+        
+        // 自动健康检查
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                try
+                {
+                    var isHealthy = await CheckServiceHealthAsync(serviceInfo);
+                    await _serviceRegistry.UpdateHealthAsync(serviceInfo.Id, isHealthy);
+                    
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Health check failed for service {ServiceId}", serviceInfo.Id);
+                }
+            }
+        });
+    }
+    
+    // 数据分片策略
+    public async Task<T> GetDataWithShardingAsync<T>(string key, Func<string, Task<T>> dataAccessor)
+    {
+        var shardKey = _dataSharding.GetShardKey(key);
+        var shard = await _dataSharding.GetShardAsync(shardKey);
+        
+        return await dataAccessor(shard.ConnectionString);
+    }
+    
+    // 插件架构
+    public async Task<T> ExecuteWithPluginAsync<T>(string operation, object parameters)
+    {
+        var plugin = _pluginManager.GetPlugin(operation);
+        if (plugin == null)
+        {
+            throw new PluginNotFoundException($"Plugin not found for operation: {operation}");
+        }
+        
+        return await plugin.ExecuteAsync<T>(parameters);
+    }
+}
+
+// 插件管理器
+public class PluginManager
+{
+    private readonly Dictionary<string, IPlugin> _plugins = new();
+    
+    public void RegisterPlugin(string name, IPlugin plugin)
+    {
+        _plugins[name] = plugin;
+    }
+    
+    public IPlugin GetPlugin(string name)
+    {
+        return _plugins.TryGetValue(name, out var plugin) ? plugin : null;
+    }
+}
+
+// 数据分片策略
+public class DataSharding
+{
+    private readonly List<ShardInfo> _shards;
+    
+    public string GetShardKey(string key)
+    {
+        // 使用一致性哈希算法
+        var hash = GetHash(key);
+        var shardIndex = hash % _shards.Count;
+        return _shards[shardIndex].Id;
+    }
+    
+    public async Task<ShardInfo> GetShardAsync(string shardKey)
+    {
+        return _shards.FirstOrDefault(s => s.Id == shardKey);
+    }
+    
+    private int GetHash(string key)
+    {
+        // 简单的哈希算法
+        return key.GetHashCode();
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会设计插件架构支持功能扩展，使用服务注册发现实现水平扩展，通过数据分片策略支持数据扩展，建立自动扩缩容机制"
+
+---
+
+### Q5: 如何设计一个高可用的系统架构？
+
+**面试官想了解什么**：你对系统可用性的深入理解。
+
+**🎯 标准答案**：
+
+**高可用设计策略**：
+1. **冗余设计**：多实例部署、多机房部署
+2. **故障转移**：自动故障检测、快速切换
+3. **熔断机制**：服务熔断、降级策略
+4. **监控告警**：实时监控、快速响应
+
+**可用性保障**：
+| 保障措施 | 实现方式 | 可用性提升 | 成本 |
+|----------|----------|------------|------|
+| **多实例部署** | 服务集群、负载均衡 | 99.9% → 99.99% | 中等 |
+| **多机房部署** | 异地多活、数据同步 | 99.99% → 99.999% | 高 |
+| **自动故障转移** | 健康检查、自动切换 | 快速恢复 | 中等 |
+| **熔断降级** | 服务熔断、降级策略 | 避免级联故障 | 低 |
+
+**具体实现**：
+```csharp
+// 高可用系统架构示例
+public class HighAvailabilitySystem
+{
+    private readonly IHealthChecker _healthChecker;
+    private readonly IFailoverManager _failoverManager;
+    private readonly ICircuitBreaker _circuitBreaker;
+    
+    // 健康检查
+    public async Task<bool> CheckServiceHealthAsync(string serviceId)
+    {
+        try
+        {
+            var healthInfo = await _healthChecker.CheckHealthAsync(serviceId);
+            
+            // 检查关键指标
+            var isHealthy = healthInfo.CpuUsage < 80 &&
+                           healthInfo.MemoryUsage < 85 &&
+                           healthInfo.ResponseTime < TimeSpan.FromSeconds(2) &&
+                           healthInfo.ErrorRate < 0.01;
+            
+            return isHealthy;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Health check failed for service {ServiceId}", serviceId);
+            return false;
+        }
+    }
+    
+    // 故障转移
+    public async Task<T> ExecuteWithFailoverAsync<T>(Func<Task<T>> operation)
+    {
+        var primaryInstance = await _failoverManager.GetPrimaryInstanceAsync();
+        
+        try
+        {
+            return await operation();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Primary instance failed, switching to backup");
+            
+            // 切换到备用实例
+            var backupInstance = await _failoverManager.GetBackupInstanceAsync();
+            return await ExecuteOnInstanceAsync(backupInstance, operation);
+        }
+    }
+    
+    // 熔断器模式
+    public async Task<T> ExecuteWithCircuitBreakerAsync<T>(string operation, Func<Task<T>> func)
+    {
+        if (_circuitBreaker.IsOpen(operation))
+        {
+            // 熔断器开启，执行降级策略
+            return await ExecuteFallbackAsync<T>(operation);
+        }
+        
+        try
+        {
+            var result = await func();
+            _circuitBreaker.OnSuccess(operation);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _circuitBreaker.OnFailure(operation);
+            throw;
+        }
+    }
+    
+    // 降级策略
+    private async Task<T> ExecuteFallbackAsync<T>(string operation)
+    {
+        switch (operation)
+        {
+            case "GetUserProfile":
+                return (T)(object)new UserProfile { Id = 0, Name = "Default User" };
+            case "GetProductInfo":
+                return (T)(object)new ProductInfo { Id = 0, Name = "Default Product" };
+            default:
+                throw new FallbackNotAvailableException($"Fallback not available for operation: {operation}");
+        }
+    }
+}
+
+// 熔断器实现
+public class CircuitBreaker
+{
+    private readonly Dictionary<string, CircuitBreakerState> _states = new();
+    private readonly int _failureThreshold = 5;
+    private readonly TimeSpan _timeout = TimeSpan.FromMinutes(1);
+    
+    public bool IsOpen(string operation)
+    {
+        if (!_states.TryGetValue(operation, out var state))
+        {
+            return false;
+        }
+        
+        if (state.Status == CircuitBreakerStatus.Open)
+        {
+            if (DateTime.UtcNow - state.LastFailureTime > _timeout)
+            {
+                // 超时后尝试半开状态
+                state.Status = CircuitBreakerStatus.HalfOpen;
+                return false;
+            }
+            return true;
+        }
+        
+        return false;
+    }
+    
+    public void OnSuccess(string operation)
+    {
+        if (_states.TryGetValue(operation, out var state))
+        {
+            state.Status = CircuitBreakerStatus.Closed;
+            state.FailureCount = 0;
+        }
+    }
+    
+    public void OnFailure(string operation)
+    {
+        if (!_states.TryGetValue(operation, out var state))
+        {
+            state = new CircuitBreakerState();
+            _states[operation] = state;
+        }
+        
+        state.FailureCount++;
+        state.LastFailureTime = DateTime.UtcNow;
+        
+        if (state.FailureCount >= _failureThreshold)
+        {
+            state.Status = CircuitBreakerStatus.Open;
+        }
+    }
+}
+
+public enum CircuitBreakerStatus
+{
+    Closed,     // 关闭状态，正常执行
+    Open,       // 开启状态，快速失败
+    HalfOpen    // 半开状态，尝试恢复
+}
+```
+
+**💡 面试加分点**：提到"我会实现多实例冗余部署，使用健康检查和自动故障转移，通过熔断器模式防止级联故障，建立完整的监控告警体系"
+
+---
+
+## 🚀 技术要点总结
+
+### 系统架构设计指南
+
+**架构模式选择策略**：
+| 架构模式 | 主要特点 | 适用场景 | 优势 | 挑战 |
+|----------|----------|----------|------|------|
+| **分层架构** | 垂直分层、职责清晰 | 小型项目、传统企业 | 简单易懂、开发快速 | 扩展性差、技术栈固化 |
+| **微服务架构** | 服务拆分、独立部署 | 大型项目、高并发 | 高扩展性、技术栈灵活 | 复杂度高、运维复杂 |
+| **事件驱动架构** | 事件发布、异步处理 | 复杂业务流程 | 松耦合、高扩展性 | 调试困难、事务复杂 |
+| **CQRS架构** | 读写分离、性能优化 | 读写比例失衡 | 性能优化、扩展性好 | 复杂度高、数据一致性 |
+
+**系统设计原则**：
+```csharp
+// 系统设计原则实现
+public class SystemDesignPrinciples
+{
+    // 单一职责原则
+    public class OrderService
+    {
+        public async Task<Order> CreateOrderAsync(CreateOrderRequest request) { /* 创建订单 */ }
+        public async Task<Order> GetOrderAsync(int orderId) { /* 获取订单 */ }
+        public async Task<bool> UpdateOrderAsync(Order order) { /* 更新订单 */ }
+        public async Task<bool> DeleteOrderAsync(int orderId) { /* 删除订单 */ }
+    }
+    
+    // 开闭原则
+    public interface IPaymentProcessor
+    {
+        Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request);
+    }
+    
+    public class CreditCardPaymentProcessor : IPaymentProcessor
+    {
+        public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request) { /* 信用卡支付 */ }
+    }
+    
+    public class PayPalPaymentProcessor : IPaymentProcessor
+    {
+        public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request) { /* PayPal支付 */ }
+    }
+    
+    // 依赖倒置原则
+    public class OrderController
+    {
+        private readonly IOrderService _orderService;
+        private readonly IPaymentProcessor _paymentProcessor;
+        
+        public OrderController(IOrderService orderService, IPaymentProcessor paymentProcessor)
+        {
+            _orderService = orderService;
+            _paymentProcessor = paymentProcessor;
+        }
+    }
+}

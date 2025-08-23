@@ -632,7 +632,7 @@ public class SecureAuthorizationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Resource authorization failed for user {UserId}", userId);
-            return false;
+                    return false;
         }
     }
     

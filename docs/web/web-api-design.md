@@ -357,6 +357,130 @@ public class ErrorResponse
 
 ---
 
+### Q3: 如何设计一个高并发的Web API？
+
+**面试官想了解什么**：你对Web API性能优化的深入理解。
+
+**🎯 标准答案**：
+
+**高并发API设计策略**：
+1. **异步处理**：使用async/await、后台任务、消息队列
+2. **缓存策略**：多级缓存、缓存预热、缓存失效
+3. **限流控制**：令牌桶、滑动窗口、分布式限流
+4. **负载均衡**：水平扩展、负载分发、健康检查
+
+**性能优化技术**：
+| 优化技术 | 适用场景 | 性能提升 | 实施难度 |
+|----------|----------|----------|----------|
+| **异步处理** | I/O密集型操作 | 5-20倍 | 中等 |
+| **缓存策略** | 重复请求多 | 10-100倍 | 低 |
+| **限流控制** | 高并发访问 | 保护系统 | 中等 |
+| **负载均衡** | 多实例部署 | 线性扩展 | 高 |
+
+**具体实现**：
+```csharp
+// 高并发API设计示例
+public class HighConcurrencyApiController : ControllerBase
+{
+    private readonly IProductService _productService;
+    private readonly ICacheService _cacheService;
+    private readonly IRateLimiter _rateLimiter;
+    private readonly IBackgroundJobClient _backgroundJob;
+    
+    // 异步处理大量数据
+    [HttpGet("products/bulk")]
+    public async Task<IActionResult> GetProductsBulk([FromQuery] int[] ids)
+    {
+        // 限流检查
+        if (!await _rateLimiter.AllowRequestAsync(User.Identity.Name))
+        {
+            return StatusCode(429, "Too many requests");
+        }
+        
+        try
+        {
+            // 缓存检查
+            var cacheKey = $"bulk_products_{string.Join("_", ids.OrderBy(id => id))}";
+            if (_cacheService.TryGet(cacheKey, out List<ProductDto> cachedProducts))
+            {
+                return Ok(cachedProducts);
+            }
+            
+            // 异步批量查询
+            var products = await _productService.GetProductsBulkAsync(ids);
+            
+            // 缓存结果
+            _cacheService.Set(cacheKey, products, TimeSpan.FromMinutes(30));
+            
+            return Ok(products);
+        }
+        catch (Exception ex)
+        {
+            // 记录错误日志
+            _logger.LogError(ex, "Failed to get bulk products");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+    
+    // 后台任务处理
+    [HttpPost("products/import")]
+    public async Task<IActionResult> ImportProducts(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest("No file provided");
+        }
+        
+        // 启动后台任务
+        var jobId = _backgroundJob.Enqueue<IProductImportService>(
+            service => service.ImportProductsAsync(file.OpenReadStream()));
+        
+        return Accepted(new { JobId = jobId, Status = "Processing" });
+    }
+    
+    // 流式响应
+    [HttpGet("products/stream")]
+    public async IAsyncEnumerable<ProductDto> GetProductsStream()
+    {
+        await foreach (var product in _productService.GetProductsStreamAsync())
+        {
+            yield return product;
+        }
+    }
+}
+
+// 限流器实现
+public class RateLimiter : IRateLimiter
+{
+    private readonly IDistributedCache _cache;
+    private readonly int _maxRequests = 100;
+    private readonly TimeSpan _window = TimeSpan.FromMinutes(1);
+    
+    public async Task<bool> AllowRequestAsync(string userId)
+    {
+        var key = $"rate_limit_{userId}";
+        var currentCount = await _cache.GetStringAsync(key);
+        
+        if (string.IsNullOrEmpty(currentCount) || int.Parse(currentCount) < _maxRequests)
+        {
+            await _cache.SetStringAsync(key, 
+                (int.Parse(currentCount ?? "0") + 1).ToString(),
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = _window
+                });
+            return true;
+        }
+        
+        return false;
+    }
+}
+```
+
+**💡 面试加分点**：提到"我会使用异步处理提高并发能力，实现多级缓存减少响应时间，通过限流控制保护系统，使用后台任务处理耗时操作"
+
+---
+
 ## 🔍 深度解析：API设计核心原理
 
 > 🤔 **深度思考**：现在让我们回到小赵的API重构问题...

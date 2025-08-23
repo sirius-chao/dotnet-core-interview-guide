@@ -260,35 +260,173 @@ public class Order
 
 ---
 
-## 🔍 深度解析：分布式系统核心原理
+---
 
-> 🤔 **深度思考**：现在让我们回到小王的分布式系统设计问题...
-> 
-> 面试官可能会问："你能详细解释一下，为什么分布式系统设计如此复杂，以及如何解决这些复杂性？"
-> 
-> 这个问题考察的是你对分布式系统本质的理解，而不仅仅是技术特点。
+## 🔍 深入面试问题
 
-### 🎯 核心问题：分布式系统复杂性如何影响系统设计？
+### Q3: 如何解决分布式系统中的数据一致性问题？
 
-**分布式系统的复杂性**：
+**面试官想了解什么**：你对分布式一致性的深入理解。
+
+**🎯 标准答案**：
+
+**一致性挑战**：
+1. **网络分区**：节点间网络不可用
+2. **时钟偏差**：不同节点时间不同步
+3. **并发冲突**：多个节点同时修改数据
+4. **故障恢复**：节点故障后状态不一致
+
+**一致性策略**：
+| 一致性级别 | 技术方案 | 适用场景 | 性能影响 |
+|------------|----------|----------|----------|
+| **强一致性** | 两阶段提交、Paxos | 金融交易、库存管理 | 高延迟、低吞吐 |
+| **最终一致性** | 事件溯源、Saga | 用户信息、日志数据 | 低延迟、高吞吐 |
+| **因果一致性** | 向量时钟、Lamport时钟 | 社交网络、消息系统 | 中等延迟、中等吞吐 |
+| **会话一致性** | 会话令牌、状态同步 | Web应用、移动应用 | 低延迟、高吞吐 |
+
+**具体实现**：
+```csharp
+// 分布式一致性实现示例
+public class DistributedConsistencyService
+{
+    private readonly IEventStore _eventStore;
+    private readonly IMessageQueue _messageQueue;
+    private readonly IDistributedLock _distributedLock;
+    
+    // 使用Saga模式保证最终一致性
+    public async Task<OrderResult> CreateOrderWithSagaAsync(CreateOrderRequest request)
+    {
+        var sagaId = Guid.NewGuid();
+        var saga = new OrderSaga(sagaId);
+        
+        try
+        {
+            // 步骤1：创建订单
+            var order = await CreateOrderAsync(request);
+            saga.AddStep(new SagaStep("CreateOrder", order.Id, true));
+            
+            // 步骤2：扣减库存
+            var inventoryResult = await DeductInventoryAsync(request.Items);
+            saga.AddStep(new SagaStep("DeductInventory", inventoryResult.Id, true));
+            
+            // 步骤3：处理支付
+            var paymentResult = await ProcessPaymentAsync(request.PaymentInfo);
+            saga.AddStep(new SagaStep("ProcessPayment", paymentResult.Id, true));
+            
+            // 步骤4：确认订单
+            await ConfirmOrderAsync(order.Id);
+            saga.AddStep(new SagaStep("ConfirmOrder", order.Id, true));
+            
+            // 保存Saga状态
+            await _eventStore.SaveSagaAsync(saga);
+            
+            return new OrderResult { Success = true, OrderId = order.Id };
+        }
+        catch (Exception ex)
+        {
+            // 执行补偿操作
+            await ExecuteCompensationAsync(saga);
+            throw;
+        }
+    }
+    
+    // 使用分布式锁保证强一致性
+    public async Task<bool> UpdateInventoryWithLockAsync(int productId, int quantity)
+    {
+        var lockKey = $"Inventory_Lock_{productId}";
+        
+        try
+        {
+            // 获取分布式锁
+            var lockAcquired = await _distributedLock.AcquireAsync(lockKey, TimeSpan.FromSeconds(30));
+            
+            if (!lockAcquired)
+            {
+                return false; // 获取锁失败
+            }
+            
+            // 更新库存
+            var inventory = await GetInventoryAsync(productId);
+            if (inventory.Quantity >= quantity)
+            {
+                inventory.Quantity -= quantity;
+                await UpdateInventoryAsync(inventory);
+                return true;
+            }
+            
+            return false;
+        }
+        finally
+        {
+            // 释放锁
+            await _distributedLock.ReleaseAsync(lockKey);
+        }
+    }
+    
+    // 使用事件溯源保证数据一致性
+    public async Task<Order> GetOrderWithEventSourcingAsync(Guid orderId)
+    {
+        var events = await _eventStore.GetEventsAsync(orderId);
+        var order = new Order();
+        
+        foreach (var @event in events.OrderBy(e => e.Timestamp))
+        {
+            order.Apply(@event);
+        }
+        
+        return order;
+    }
+}
+
+// Saga模式实现
+public class OrderSaga
+{
+    public Guid Id { get; }
+    public List<SagaStep> Steps { get; } = new();
+    public SagaStatus Status { get; private set; } = SagaStatus.Running;
+    
+    public OrderSaga(Guid id)
+    {
+        Id = id;
+    }
+    
+    public void AddStep(SagaStep step)
+    {
+        Steps.Add(step);
+    }
+    
+    public async Task CompensateAsync()
+    {
+        // 按相反顺序执行补偿操作
+        for (int i = Steps.Count - 1; i >= 0; i--)
+        {
+            var step = Steps[i];
+            if (step.Completed)
+            {
+                await ExecuteCompensationAsync(step);
+            }
+        }
+        
+        Status = SagaStatus.Compensated;
+    }
+}
+
+public class SagaStep
+{
+    public string Operation { get; set; }
+    public object Data { get; set; }
+    public bool Completed { get; set; }
+    
+    public SagaStep(string operation, object data, bool completed)
+    {
+        Operation = operation;
+        Data = data;
+        Completed = completed;
+    }
+}
 ```
-网络分区 → 节点故障 → 时钟不同步 → 数据不一致 → 系统不可用
-    ↓         ↓         ↓         ↓         ↓
-  通信中断   服务中断   时间差异   状态冲突   用户体验差
-```
 
-**分布式系统设计的解决方案**：
-```
-容错设计 → 一致性算法 → 故障检测 → 自动恢复 → 系统可用
-    ↓         ↓         ↓         ↓         ↓
-  冗余部署   状态同步   健康检查   服务重启   用户体验好
-```
-
-**分布式系统价值原理**：
-- **高可用性**：通过冗余设计，即使部分节点故障，系统仍能提供服务
-- **高扩展性**：通过水平扩展，系统能够处理更大的负载
-- **容错性**：通过容错设计，系统能够容忍各种故障
-- **一致性**：通过一致性算法，保证数据的一致性和正确性
+**💡 面试加分点**：提到"我会根据业务场景选择合适的一致性策略，使用Saga模式处理长事务，实现分布式锁保证强一致性，通过事件溯源记录数据变更历史"
 
 ---
 

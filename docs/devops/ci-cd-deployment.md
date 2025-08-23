@@ -194,15 +194,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      
+    
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: '8.0.x'
-        
+    
     - name: Restore dependencies
       run: dotnet restore
-      
+    
     - name: Build
       run: dotnet build --no-restore --configuration Release
       
@@ -258,8 +258,8 @@ jobs:
 trigger:
   branches:
     include:
-    - main
-    - develop
+- main
+- develop
 
 variables:
   solution: '**/*.sln'
@@ -279,32 +279,32 @@ stages:
     - task: UseDotNet@2
       inputs:
         version: '$(dotNetVersion)'
-        
+    
     - task: DotNetCoreCLI@2
       displayName: 'Restore packages'
       inputs:
         command: 'restore'
         projects: '$(solution)'
-        
+    
     - task: DotNetCoreCLI@2
       displayName: 'Build solution'
       inputs:
         command: 'build'
         projects: '$(solution)'
         arguments: '--configuration $(buildConfiguration) --no-restore'
-        
+    
     - task: DotNetCoreCLI@2
       displayName: 'Run unit tests'
       inputs:
         command: 'test'
         projects: '**/*Tests/*.csproj'
         arguments: '--configuration $(buildConfiguration) --no-build --collect:"XPlat Code Coverage"'
-        
+    
     - task: PublishCodeCoverageResults@1
       inputs:
         codeCoverageTool: 'Cobertura'
         summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.cobertura.xml'
-        
+    
     - task: PublishBuildArtifacts@1
       inputs:
         pathToPublish: '$(Build.ArtifactStagingDirectory)'
@@ -327,7 +327,7 @@ stages:
               buildType: 'current'
               artifactName: 'drop'
               downloadPath: '$(System.ArtifactsDirectory)'
-              
+          
           - task: DotNetCoreCLI@2
             inputs:
               command: 'publish'
@@ -352,7 +352,7 @@ stages:
               buildType: 'current'
               artifactName: 'drop'
               downloadPath: '$(System.ArtifactsDirectory)'
-              
+          
           - task: DotNetCoreCLI@2
             inputs:
               command: 'publish'
